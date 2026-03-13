@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import Papa from 'papaparse';
 import * as mammoth from 'mammoth';
-import { WordState } from '../utils/ebbinghaus';
+import { WordState } from '../utils/word';
 import { enrichWords } from '../utils/gemini';
 import { Upload, X, FileText, ClipboardPaste, Loader2 } from 'lucide-react';
 
@@ -148,12 +148,14 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
             listName: finalListName,
             word: wordStr,
             part_of_speech: item.part_of_speech || '',
+            phonetic: item.phonetic || '',
             root: item.root || '',
             meaning: item.meaning || '',
             example_sentence: item.example_sentence || '',
             review_count: 0,
             last_review_time: null,
-            next_review_time: null,
+            is_completed_normal: false,
+            is_completed_dictation: false,
           };
 
           if (!wordObj.meaning || !wordObj.example_sentence) {
@@ -207,6 +209,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
             const enriched = enrichedDataMap.get(wordObj.word.toLowerCase());
             if (enriched) {
               wordObj.part_of_speech = enriched.part_of_speech || wordObj.part_of_speech;
+              wordObj.phonetic = enriched.phonetic || wordObj.phonetic;
               wordObj.root = enriched.root || wordObj.root;
               wordObj.meaning = enriched.meaning || wordObj.meaning;
               wordObj.example_sentence = enriched.example_sentence || wordObj.example_sentence;

@@ -1,4 +1,4 @@
-import { WordState } from './ebbinghaus';
+import { WordState } from './word';
 
 const STORAGE_KEY = 'ebbinghaus_typing_words';
 
@@ -20,35 +20,13 @@ export const saveWords = (words: WordState[]) => {
   }
 };
 
-export const getNextWordToReview = (words: WordState[]): WordState | null => {
+export const getNextWordToReview = (words: WordState[], isDictationMode: boolean = false): WordState | null => {
   if (words.length === 0) return null;
   
-  const now = Date.now();
+  // Sequential mode: Find the first word that is not completed in the current mode
+  const nextWord = words.find(w => 
+    isDictationMode ? !w.is_completed_dictation : !w.is_completed_normal
+  );
   
-  // 1. Find words that are due or new (next_review_time <= now or null)
-  const availableWords = words.filter(w => w.next_review_time === null || w.next_review_time <= now);
-  
-  if (availableWords.length > 0) {
-    // Sort by review_count (ascending) first, then by most overdue
-    return availableWords.sort((a, b) => {
-      if (a.review_count !== b.review_count) {
-        return a.review_count - b.review_count;
-      }
-      const timeA = a.next_review_time === null ? 0 : a.next_review_time;
-      const timeB = b.next_review_time === null ? 0 : b.next_review_time;
-      return timeA - timeB;
-    })[0];
-  }
-  
-  // 2. If no words are due and no new words, allow continuous practice
-  // Sort by review_count (ascending) first, then by closest to being due
-  const upcomingWords = [...words].sort((a, b) => {
-    if (a.review_count !== b.review_count) {
-      return a.review_count - b.review_count;
-    }
-    const timeA = a.next_review_time === null ? 0 : a.next_review_time;
-    const timeB = b.next_review_time === null ? 0 : b.next_review_time;
-    return timeA - timeB;
-  });
-  return upcomingWords[0];
+  return nextWord || null;
 };
