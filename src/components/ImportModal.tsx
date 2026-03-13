@@ -12,7 +12,7 @@ interface ImportModalProps {
 
 export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) => {
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'file' | 'paste'>('file');
+  const [activeTab, setActiveTab] = useState<'file' | 'paste'>('paste');
   const [pasteContent, setPasteContent] = useState('');
   const [listName, setListName] = useState('');
   const [isEnriching, setIsEnriching] = useState(false);
@@ -258,20 +258,20 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
 
         <div className="flex space-x-2 mb-6 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
           <button 
-            onClick={() => { setActiveTab('file'); setError(null); }} 
-            disabled={isEnriching}
-            className={`flex-1 flex items-center justify-center space-x-2 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50 ${activeTab === 'file' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
-          >
-            <FileText size={16} />
-            <span>File Upload</span>
-          </button>
-          <button 
             onClick={() => { setActiveTab('paste'); setError(null); }} 
             disabled={isEnriching}
             className={`flex-1 flex items-center justify-center space-x-2 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50 ${activeTab === 'paste' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
           >
             <ClipboardPaste size={16} />
             <span>Paste Text</span>
+          </button>
+          <button 
+            onClick={() => { setActiveTab('file'); setError(null); }} 
+            disabled={isEnriching}
+            className={`flex-1 flex items-center justify-center space-x-2 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50 ${activeTab === 'file' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            <FileText size={16} />
+            <span>File Upload</span>
           </button>
         </div>
 
