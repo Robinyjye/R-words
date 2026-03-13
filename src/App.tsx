@@ -8,7 +8,7 @@ import { WordState } from './utils/word';
 import { loadWords, saveWords, getNextWordToReview } from './utils/storage';
 import { playKeystrokeSound, playSuccessSound, speakWord } from './utils/audio';
 import { ImportModal } from './components/ImportModal';
-import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft } from 'lucide-react';
+import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 
@@ -109,6 +109,62 @@ export default function App() {
     }
   }, [filteredWords, isTransitioning, currentWordId, isViewingHistory, isDictationMode]);
 
+  const handleBack = useCallback(() => {
+    let newHistory = [...history];
+    let prevWord;
+    
+    while (newHistory.length > 0 && !prevWord) {
+      const prevId = newHistory.pop();
+      prevWord = filteredWords.find(w => w.id === prevId);
+    }
+    
+    setHistory(newHistory);
+    
+    if (prevWord) {
+      setIsViewingHistory(true);
+      setCurrentWord(prevWord);
+      setInput('');
+      speakWord(prevWord.word);
+    }
+  }, [history, filteredWords]);
+
+  const handleSkip = useCallback(() => {
+    if (!currentWord) return;
+    
+    setIsTransitioning(true);
+    
+    if (isViewingHistory) {
+      setTimeout(() => {
+        setCurrentWord(null);
+        setIsTransitioning(false);
+        setInput('');
+        setIsViewingHistory(false);
+      }, 200);
+      return;
+    }
+    
+    // Move current word to the end of the list so it appears later
+    const updatedWords = [...words];
+    const currentIndex = updatedWords.findIndex(w => w.id === currentWord.id);
+    if (currentIndex !== -1) {
+      const [wordToMove] = updatedWords.splice(currentIndex, 1);
+      updatedWords.push(wordToMove);
+      setWords(updatedWords);
+      saveWords(updatedWords);
+    }
+    
+    setTimeout(() => {
+      setHistory(prev => {
+        if (prev[prev.length - 1] === currentWord.id) return prev;
+        return [...prev, currentWord.id];
+      });
+      setCurrentWord(null);
+      setIsTransitioning(false);
+      setInput('');
+      setIsViewingHistory(false);
+    }, 200);
+  }, [currentWord, words, isViewingHistory]);
+
   // Handle keyboard input
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -116,6 +172,19 @@ export default function App() {
 
       // Ignore modifier keys
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      // Handle arrow keys for navigation
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handleBack();
+        return;
+      }
+
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleSkip();
+        return;
+      }
 
       // Handle backspace
       if (e.key === 'Backspace') {
@@ -158,7 +227,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode]);
+  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip]);
 
   // Check for completion
   useEffect(() => {
@@ -217,25 +286,6 @@ export default function App() {
       setIsViewingHistory(false);
     }, 500);
   }, [currentWord, words, isDictationMode, hasError, isHinted, filteredWords]);
-
-  const handleBack = useCallback(() => {
-    let newHistory = [...history];
-    let prevWord;
-    
-    while (newHistory.length > 0 && !prevWord) {
-      const prevId = newHistory.pop();
-      prevWord = filteredWords.find(w => w.id === prevId);
-    }
-    
-    setHistory(newHistory);
-    
-    if (prevWord) {
-      setIsViewingHistory(true);
-      setCurrentWord(prevWord);
-      setInput('');
-      speakWord(prevWord.word);
-    }
-  }, [history, filteredWords]);
 
   const handleResetList = () => {
     const updatedWords = words.map(w => {
@@ -556,6 +606,17 @@ export default function App() {
                     <ArrowLeft size={24} />
                   </button>
                 )}
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleSkip();
+                  }}
+                  className="absolute top-1/2 -translate-y-1/2 -right-16 md:-right-24 p-2 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
+                  title="Skip to next word"
+                  tabIndex={-1}
+                >
+                  <ArrowRight size={24} />
+                </button>
                 {isDictationMode ? (
                   <div className="flex flex-col items-center">
                     {!isHinted ? (
