@@ -6,9 +6,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { WordState } from './utils/word';
 import { loadWords, saveWords, getNextWordToReview } from './utils/storage';
-import { playKeystrokeSound, playSuccessSound, speakWord } from './utils/audio';
+import { playKeystrokeSound, playSuccessSound, speakWord, playComboSound } from './utils/audio';
 import { ImportModal } from './components/ImportModal';
-import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw } from 'lucide-react';
+import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 
@@ -75,6 +75,109 @@ export default function App() {
   const filteredWords = useMemo(() => {
     return words.filter(w => (w.listName || 'Default List') === activeList);
   }, [words, activeList]);
+
+  // Game State
+  const [isGameMode, setIsGameMode] = useState(false);
+  const [gameWords, setGameWords] = useState<WordState[]>([]);
+  const [currentGameIdx, setCurrentGameIdx] = useState(0);
+  const [gameInput, setGameInput] = useState<string[]>([]); // Array of characters for the blanks
+  const [gameBlanks, setGameBlanks] = useState<number[]>([]); // Indices of the blanks
+  const [combo, setCombo] = useState(0);
+  const [showCombo, setShowCombo] = useState(false);
+  const [gameStatus, setGameStatus] = useState<'playing' | 'correct' | 'finished'>('playing');
+  const [isPeeking, setIsPeeking] = useState(false);
+
+  const startGame = useCallback(() => {
+    if (filteredWords.length === 0) {
+      showToast("当前列表没有单词，无法开始游戏。");
+      return;
+    }
+    // Shuffle and pick up to 20 words
+    const shuffled = [...filteredWords].sort(() => Math.random() - 0.5).slice(0, 20);
+    setGameWords(shuffled);
+    setCurrentGameIdx(0);
+    setCombo(0);
+    setIsGameMode(true);
+    setGameStatus('playing');
+    setupWordGame(shuffled[0]);
+  }, [filteredWords]);
+
+  const setupWordGame = useCallback((wordObj: WordState) => {
+    const word = wordObj.word;
+    const len = word.length;
+    
+    const indices = Array.from({ length: len }, (_, i) => i);
+    // Don't blank spaces or hyphens
+    const validIndices = indices.filter(i => /[a-zA-Z]/.test(word[i]));
+    
+    // Determine how many blanks based on word length
+    // At least 2 blanks, or all characters if word is very short
+    let numBlanks = Math.max(2, Math.floor(len * 0.35));
+    numBlanks = Math.min(numBlanks, validIndices.length);
+    
+    const shuffledIndices = [...validIndices].sort(() => Math.random() - 0.5);
+    const selectedBlanks = shuffledIndices.slice(0, numBlanks).sort((a, b) => a - b);
+    
+    setGameBlanks(selectedBlanks);
+    setGameInput(new Array(selectedBlanks.length).fill(''));
+    setGameStatus('playing');
+  }, []);
+
+  const handleGameInput = useCallback((char: string) => {
+    if (gameStatus !== 'playing') return;
+
+    const currentBlankIdx = gameInput.findIndex(val => val === '');
+    if (currentBlankIdx === -1) return;
+
+    const targetChar = gameWords[currentGameIdx].word[gameBlanks[currentBlankIdx]];
+    
+    if (char.toLowerCase() === targetChar.toLowerCase()) {
+      // Correct
+      const newInput = [...gameInput];
+      newInput[currentBlankIdx] = char;
+      setGameInput(newInput);
+      playKeystrokeSound(char);
+
+      // Check if word is complete
+      if (currentBlankIdx === gameBlanks.length - 1) {
+        setGameStatus('correct');
+        setCombo(prev => prev + 1);
+        setShowCombo(true);
+        playComboSound(combo + 1);
+        speakWord(gameWords[currentGameIdx].word);
+        
+        setTimeout(() => {
+          setShowCombo(false);
+          const nextIdx = currentGameIdx + 1;
+          if (nextIdx < gameWords.length) {
+            setCurrentGameIdx(nextIdx);
+            setupWordGame(gameWords[nextIdx]);
+          } else {
+            setGameStatus('finished');
+          }
+        }, 800);
+      }
+    } else {
+      // Wrong
+      setCombo(0);
+      // Visual feedback for wrong? Maybe shake?
+      playKeystrokeSound(char); // Or a different sound? User asked for mechanical keyboard sound for typing.
+    }
+  }, [gameStatus, gameInput, gameWords, currentGameIdx, gameBlanks, combo, setupWordGame]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isGameMode || gameStatus !== 'playing') return;
+      if (e.key.length === 1 && /[a-zA-Z]/.test(e.key)) {
+        handleGameInput(e.key);
+      }
+      if (e.key === 'Escape') {
+        setIsGameMode(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isGameMode, gameStatus, handleGameInput]);
 
   const currentWordId = currentWord?.id;
 
@@ -196,7 +299,7 @@ export default function App() {
       // Handle backspace
       if (e.key === 'Backspace') {
         setInput(prev => prev.slice(0, -1));
-        playKeystrokeSound();
+        playKeystrokeSound(e.key);
         return;
       }
 
@@ -227,7 +330,7 @@ export default function App() {
         // Only accept input if we haven't typed the full word yet
         if (input.length < targetWord.length) {
           setInput(prev => prev + e.key);
-          playKeystrokeSound();
+          playKeystrokeSound(e.key);
         }
       }
     };
@@ -612,6 +715,20 @@ export default function App() {
               <Headphones size={18} />
             </button>
             <button
+              onClick={() => {
+                if (isGameMode) setIsGameMode(false);
+                else startGame();
+              }}
+              className={`p-2 rounded-full border transition-colors flex items-center justify-center ${
+                isGameMode
+                  ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
+                  : 'border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 hover:bg-zinc-900'
+              }`}
+              title="Word Game"
+            >
+              <Gamepad2 size={18} />
+            </button>
+            <button
               onClick={() => setShowImport(true)}
               className="text-sm font-medium text-zinc-400 hover:text-white transition-colors px-4 py-2 rounded-full border border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900"
             >
@@ -930,8 +1047,130 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {isGameMode && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-zinc-950 flex flex-col items-center justify-center p-6"
+          >
+            <button 
+              onClick={() => setIsGameMode(false)}
+              className="absolute top-8 right-8 p-2 text-zinc-500 hover:text-white transition-colors"
+            >
+              <X size={32} />
+            </button>
+
+            <div className="w-full max-w-3xl text-center">
+              {gameStatus === 'finished' ? (
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="space-y-6"
+                >
+                  <Gamepad2 size={80} className="mx-auto text-indigo-500 mb-4" />
+                  <h2 className="text-4xl font-bold text-white">游戏结束!</h2>
+                  <p className="text-zinc-400 text-xl">太棒了，你完成了所有挑战。</p>
+                  <div className="text-6xl font-black text-indigo-400">
+                    MAX COMBO: {combo}
+                  </div>
+                  <button
+                    onClick={startGame}
+                    className="mt-8 px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full font-bold transition-colors"
+                  >
+                    再玩一次
+                  </button>
+                </motion.div>
+              ) : (
+                <>
+                  <div className="mb-12 max-w-2xl mx-auto">
+                    <div className="text-zinc-500 font-mono text-sm mb-2">
+                      WORD {currentGameIdx + 1} / {gameWords.length}
+                    </div>
+                    <div className="h-1 w-full bg-zinc-900 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-indigo-500 transition-all duration-300"
+                        style={{ width: `${((currentGameIdx + 1) / gameWords.length) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="relative pt-20 pb-12 flex flex-col items-center justify-center">
+                    <AnimatePresence>
+                      {showCombo && combo > 1 && (
+                        <motion.div
+                          initial={{ scale: 0.5, opacity: 0, y: 20 }}
+                          animate={{ scale: 1.5, opacity: 1, y: -80 }}
+                          exit={{ opacity: 0 }}
+                          className="absolute left-1/2 -translate-x-1/2 pointer-events-none"
+                        >
+                          <div className="text-5xl font-black text-indigo-400 italic tracking-tighter">
+                            {combo} COMBO!
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <div className="text-5xl md:text-7xl font-bold tracking-widest text-white flex justify-center flex-wrap gap-x-2">
+                      {gameWords[currentGameIdx]?.word.split('').map((char, i) => {
+                        const isBlank = gameBlanks.includes(i);
+                        if (isBlank) {
+                          const blankIdx = gameBlanks.indexOf(i);
+                          const isCurrent = gameInput.findIndex(v => v === '') === blankIdx;
+                          return (
+                            <span 
+                              key={i} 
+                              className={`inline-block min-w-[1ch] border-b-4 mx-0.5 transition-all duration-200 ${
+                                gameInput[blankIdx] 
+                                  ? 'border-indigo-500 text-indigo-400' 
+                                  : isCurrent ? 'border-zinc-400' : 'border-zinc-800 text-transparent'
+                              }`}
+                            >
+                              {gameInput[blankIdx] || (isPeeking ? <span className="opacity-30">{char}</span> : ' ')}
+                            </span>
+                          );
+                        }
+                        return <span key={i} className="text-zinc-600">{char}</span>;
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-center mb-10">
+                    <button
+                      onMouseDown={() => setIsPeeking(true)}
+                      onMouseUp={() => setIsPeeking(false)}
+                      onMouseLeave={() => setIsPeeking(false)}
+                      onTouchStart={(e) => { e.preventDefault(); setIsPeeking(true); }}
+                      onTouchEnd={() => setIsPeeking(false)}
+                      className={`p-3 rounded-full transition-all duration-200 ${
+                        isPeeking 
+                          ? 'bg-indigo-600 text-white scale-95' 
+                          : 'bg-zinc-900 text-zinc-500 hover:text-indigo-400 hover:bg-zinc-800'
+                      }`}
+                      title="Hold to peek"
+                    >
+                      <Eye size={24} />
+                    </button>
+                  </div>
+
+                  <div className="mt-0">
+                    <p className="text-2xl text-zinc-300 font-medium mb-2">
+                      {gameWords[currentGameIdx]?.meaning}
+                    </p>
+                    <p className="text-zinc-500 font-mono italic">
+                      {gameWords[currentGameIdx]?.part_of_speech}
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
-        Rev 1.2 Designed by robin.yj.ye@gmail.com in Mar 2026
+        Rev 1.3 Designed by robin.yj.ye@gmail.com in Mar 2026
       </div>
     </div>
   );
