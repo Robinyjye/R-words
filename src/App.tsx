@@ -88,6 +88,80 @@ export default function App() {
   const [gameStatus, setGameStatus] = useState<'playing' | 'correct' | 'finished'>('playing');
   const [isPeeking, setIsPeeking] = useState(false);
 
+  // Trigger effect on every 5 combo with increasing intensity
+  useEffect(() => {
+    if (combo > 0 && combo % 5 === 0 && gameStatus === 'correct') {
+      const milestone = combo / 5;
+      const intensity = Math.min(milestone, 5); // Cap intensity scaling for physics stability
+      
+      // Base particle count increases with combo
+      const count = 150 + (milestone * 100);
+      
+      const defaults = {
+        origin: { y: 0.7 },
+        zIndex: 1000,
+        scalar: 0.7 + (milestone * 0.2), // Particles get slightly larger
+      };
+
+      function fire(particleRatio: number, opts: any) {
+        confetti({
+          ...defaults,
+          ...opts,
+          particleCount: Math.floor(count * particleRatio)
+        });
+      }
+
+      // Pattern 1: Side Cannons (Starts at 5)
+      if (milestone >= 1) {
+        fire(0.25, {
+          spread: 26 + (milestone * 5),
+          startVelocity: 55 + (milestone * 2),
+          origin: { x: 0.2, y: 0.8 }
+        });
+        fire(0.25, {
+          spread: 26 + (milestone * 5),
+          startVelocity: 55 + (milestone * 2),
+          origin: { x: 0.8, y: 0.8 }
+        });
+      }
+
+      // Pattern 2: Center Blast (Starts at 10)
+      if (milestone >= 2) {
+        fire(0.2, {
+          spread: 60 + (milestone * 10),
+          origin: { x: 0.5, y: 0.7 },
+          gravity: 1.2
+        });
+      }
+
+      // Pattern 3: Wide Shower (Starts at 15)
+      if (milestone >= 3) {
+        fire(0.35, {
+          spread: 100 + (milestone * 20),
+          decay: 0.91,
+          scalar: 1.2,
+          origin: { x: 0.5, y: 0.4 }
+        });
+      }
+
+      // Pattern 4: Random Bursts (Starts at 20+)
+      if (milestone >= 4) {
+        const bursts = Math.min(milestone, 8);
+        for(let i = 0; i < bursts; i++) {
+          setTimeout(() => {
+            confetti({
+              ...defaults,
+              particleCount: 40,
+              spread: 360,
+              startVelocity: 30,
+              origin: { x: Math.random(), y: Math.random() * 0.5 }
+            });
+          }, i * 100);
+        }
+      }
+    }
+  }, [combo, gameStatus]);
+
   const startGame = useCallback(() => {
     if (filteredWords.length === 0) {
       showToast("当前列表没有单词，无法开始游戏。");
@@ -143,8 +217,10 @@ export default function App() {
       // Check if word is complete
       if (currentBlankIdx === gameBlanks.length - 1) {
         setGameStatus('correct');
+        let isMilestone = false;
         setCombo(prev => {
           const newCombo = prev + 1;
+          isMilestone = newCombo % 5 === 0;
           setMaxCombo(m => Math.max(m, newCombo));
           return newCombo;
         });
@@ -152,16 +228,18 @@ export default function App() {
         playComboSound(combo + 1);
         speakWord(gameWords[currentGameIdx].word);
         
+        const delay = isMilestone ? 3500 : 1200;
         setTimeout(() => {
           setShowCombo(false);
           const nextIdx = currentGameIdx + 1;
           if (nextIdx < gameWords.length) {
             setCurrentGameIdx(nextIdx);
             setupWordGame(gameWords[nextIdx]);
+            setGameStatus('playing');
           } else {
             setGameStatus('finished');
           }
-        }, 800);
+        }, delay);
       }
     } else {
       // Wrong
@@ -1107,11 +1185,36 @@ export default function App() {
                       {showCombo && combo > 1 && (
                         <motion.div
                           initial={{ scale: 0.5, opacity: 0, y: 20 }}
-                          animate={{ scale: 1.5, opacity: 1, y: -80 }}
-                          exit={{ opacity: 0 }}
-                          className="absolute left-1/2 -translate-x-1/2 pointer-events-none"
+                          animate={{ 
+                            scale: combo % 5 === 0 ? [1, 1.2, 1.1] : 1, 
+                            opacity: 1, 
+                            y: -80,
+                            rotate: combo % 5 === 0 ? [0, -5, 5, 0] : 0
+                          }}
+                          transition={{ duration: 0.6, ease: "easeOut" }}
+                          exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.4 } }}
+                          className="absolute left-1/2 -translate-x-1/2 pointer-events-none z-10 flex flex-col items-center"
                         >
-                          <div className="text-5xl font-black text-indigo-400 italic tracking-tighter">
+                          {combo % 5 === 0 && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ 
+                                opacity: [0, 1, 0.8, 1],
+                                scale: [0.9, 1.1, 1],
+                              }}
+                              transition={{ duration: 0.8 }}
+                              className="text-5xl md:text-7xl font-black italic tracking-tighter drop-shadow-2xl text-amber-400 mb-1"
+                              style={{
+                                textShadow: `0 0 ${Math.min(combo * 2, 60)}px rgba(251, 191, 36, 0.9)`
+                              }}
+                            >
+                              {combo >= 20 ? 'GODLIKE!!' : combo >= 15 ? 'LEGENDARY!' : combo >= 10 ? 'AMAZING!' : 'GREAT!'}
+                            </motion.div>
+                          )}
+                          
+                          <div className={`font-bold uppercase tracking-[0.3em] transition-all duration-300 ${
+                            combo % 5 === 0 ? 'text-amber-200 text-base' : 'text-indigo-400 text-sm'
+                          }`}>
                             {combo} COMBO!
                           </div>
                         </motion.div>
