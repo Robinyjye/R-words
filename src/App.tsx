@@ -83,6 +83,7 @@ export default function App() {
   const [gameInput, setGameInput] = useState<string[]>([]); // Array of characters for the blanks
   const [gameBlanks, setGameBlanks] = useState<number[]>([]); // Indices of the blanks
   const [combo, setCombo] = useState(0);
+  const [maxCombo, setMaxCombo] = useState(0);
   const [showCombo, setShowCombo] = useState(false);
   const [gameStatus, setGameStatus] = useState<'playing' | 'correct' | 'finished'>('playing');
   const [isPeeking, setIsPeeking] = useState(false);
@@ -97,6 +98,7 @@ export default function App() {
     setGameWords(shuffled);
     setCurrentGameIdx(0);
     setCombo(0);
+    setMaxCombo(0);
     setIsGameMode(true);
     setGameStatus('playing');
     setupWordGame(shuffled[0]);
@@ -141,7 +143,11 @@ export default function App() {
       // Check if word is complete
       if (currentBlankIdx === gameBlanks.length - 1) {
         setGameStatus('correct');
-        setCombo(prev => prev + 1);
+        setCombo(prev => {
+          const newCombo = prev + 1;
+          setMaxCombo(m => Math.max(m, newCombo));
+          return newCombo;
+        });
         setShowCombo(true);
         playComboSound(combo + 1);
         speakWord(gameWords[currentGameIdx].word);
@@ -1073,7 +1079,7 @@ export default function App() {
                   <h2 className="text-4xl font-bold text-white">游戏结束!</h2>
                   <p className="text-zinc-400 text-xl">太棒了，你完成了所有挑战。</p>
                   <div className="text-6xl font-black text-indigo-400">
-                    MAX COMBO: {combo}
+                    MAX COMBO: {maxCombo}
                   </div>
                   <button
                     onClick={startGame}
