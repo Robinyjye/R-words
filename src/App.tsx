@@ -8,7 +8,7 @@ import { WordState } from './utils/word';
 import { loadWords, saveWords, getNextWordToReview } from './utils/storage';
 import { playKeystrokeSound, playSuccessSound, speakWord } from './utils/audio';
 import { ImportModal } from './components/ImportModal';
-import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 
@@ -21,6 +21,9 @@ export default function App() {
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [isDictationMode, setIsDictationMode] = useState(() => {
     return localStorage.getItem('ebbinghaus_dictation_mode') === 'true';
+  });
+  const [isEbbinghausMode, setIsEbbinghausMode] = useState(() => {
+    return localStorage.getItem('ebbinghaus_mode') === 'true';
   });
   const [activeList, setActiveList] = useState<string>(() => {
     return localStorage.getItem('ebbinghaus_active_list') || 'Default List';
@@ -47,6 +50,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('ebbinghaus_dictation_mode', isDictationMode.toString());
   }, [isDictationMode]);
+
+  useEffect(() => {
+    localStorage.setItem('ebbinghaus_mode', isEbbinghausMode.toString());
+  }, [isEbbinghausMode]);
 
   // Modals state
   const [listToRename, setListToRename] = useState<string | null>(null);
@@ -84,7 +91,7 @@ export default function App() {
           return;
         }
 
-        const next = getNextWordToReview(filteredWords, isDictationMode);
+        const next = getNextWordToReview(filteredWords, isDictationMode, isEbbinghausMode);
         
         if (next) {
           if (next.id !== currentWordId) {
@@ -107,7 +114,7 @@ export default function App() {
         setCurrentWord(null);
       }
     }
-  }, [filteredWords, isTransitioning, currentWordId, isViewingHistory, isDictationMode]);
+  }, [filteredWords, isTransitioning, currentWordId, isViewingHistory, isDictationMode, isEbbinghausMode]);
 
   const handleBack = useCallback(() => {
     let newHistory = [...history];
@@ -273,6 +280,9 @@ export default function App() {
       has_error: shouldClearError ? false : (isErrorThisTime || currentWord.has_error),
       is_completed_normal: isDictationMode ? currentWord.is_completed_normal : true,
       is_completed_dictation: isDictationMode ? true : currentWord.is_completed_dictation,
+      ebbinghaus_stage: isErrorThisTime 
+        ? Math.max(0, (currentWord.ebbinghaus_stage || 0) - 1) 
+        : (currentWord.ebbinghaus_stage || 0) + 1,
     };
 
     const updatedWords = words.map(w => w.id === currentWord.id ? updatedWord : w);
@@ -291,7 +301,15 @@ export default function App() {
     const updatedWords = words.map(w => {
       const isInActiveList = (w.listName || 'Default List') === activeList;
       if (isInActiveList) {
-        return { ...w, is_completed_normal: false, is_completed_dictation: false, has_error: false };
+        return { 
+          ...w, 
+          is_completed_normal: false, 
+          is_completed_dictation: false, 
+          has_error: false,
+          ebbinghaus_stage: 0,
+          last_review_time: null,
+          review_count: 0
+        };
       }
       return w;
     });
@@ -331,9 +349,35 @@ export default function App() {
 
   const progress = useMemo(() => {
     if (filteredWords.length === 0) return 0;
+    
+    if (isEbbinghausMode) {
+      // In Ebbinghaus mode, progress is how many words are NOT due for review
+      const now = Date.now();
+      const EBBINGHAUS_INTERVALS = [
+        0, 5 * 60 * 1000, 30 * 60 * 1000, 12 * 60 * 60 * 1000, 
+        24 * 60 * 60 * 1000, 2 * 24 * 60 * 60 * 1000, 4 * 24 * 60 * 60 * 1000, 
+        7 * 24 * 60 * 60 * 1000, 15 * 24 * 60 * 60 * 1000,
+        30 * 24 * 60 * 60 * 1000
+      ];
+      
+      const notDue = filteredWords.filter(w => {
+        const isCompleted = isDictationMode ? w.is_completed_dictation : w.is_completed_normal;
+        if (isCompleted) return true;
+        
+        const stage = w.ebbinghaus_stage || 0;
+        if (stage === 0) return false;
+        
+        const lastReview = w.last_review_time || 0;
+        const interval = EBBINGHAUS_INTERVALS[stage] || EBBINGHAUS_INTERVALS[EBBINGHAUS_INTERVALS.length - 1];
+        return now - lastReview < interval;
+      }).length;
+      
+      return Math.round((notDue / filteredWords.length) * 100);
+    }
+
     const completed = filteredWords.filter(w => isDictationMode ? w.is_completed_dictation : w.is_completed_normal).length;
     return Math.round((completed / filteredWords.length) * 100);
-  }, [filteredWords, isDictationMode]);
+  }, [filteredWords, isDictationMode, isEbbinghausMode]);
 
   const triggerFireworks = useCallback(() => {
     const duration = 5 * 1000;
@@ -486,9 +530,14 @@ export default function App() {
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2 text-zinc-400">
               <Database size={18} />
-              <span className="text-sm font-medium tracking-wide uppercase">
-                {filteredWords.length} Words
-              </span>
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold tracking-wider text-zinc-500 leading-none mb-1">
+                  total: {words.length}
+                </span>
+                <span className="text-sm font-medium tracking-wide text-zinc-300 leading-none">
+                  {filteredWords.length} in list
+                </span>
+              </div>
             </div>
             
             {/* List Selector */}
@@ -514,7 +563,7 @@ export default function App() {
                       className="p-1.5 text-zinc-500 hover:text-amber-400 hover:bg-zinc-900 rounded-md transition-colors"
                       title="Reset List Progress"
                     >
-                      <Clock size={14} />
+                      <RotateCcw size={14} />
                     </button>
                     <button 
                       onClick={() => {
@@ -541,6 +590,17 @@ export default function App() {
           
           <div className="flex items-center space-x-3">
             <button
+              onClick={() => setIsEbbinghausMode(!isEbbinghausMode)}
+              className={`p-2 rounded-full border transition-colors flex items-center justify-center ${
+                isEbbinghausMode
+                  ? 'border-amber-500 text-amber-400 bg-amber-500/10'
+                  : 'border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 hover:bg-zinc-900'
+              }`}
+              title={isEbbinghausMode ? "Disable Ebbinghaus Mode" : "Enable Ebbinghaus Mode"}
+            >
+              <Brain size={18} />
+            </button>
+            <button
               onClick={() => setIsDictationMode(!isDictationMode)}
               className={`p-2 rounded-full border transition-colors flex items-center justify-center ${
                 isDictationMode
@@ -564,7 +624,7 @@ export default function App() {
         {filteredWords.length > 0 && (
           <div className="w-full max-w-3xl mx-auto">
             <div className="flex justify-between items-center mb-1.5 px-1">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-500">Progress</span>
+              <span className="text-[10px] font-mono tracking-widest text-zinc-500">progress</span>
               <span className="text-[10px] font-mono text-emerald-500">{progress}%</span>
             </div>
             <div className="h-1 w-full bg-zinc-900 rounded-full overflow-hidden">
@@ -728,12 +788,22 @@ export default function App() {
             >
               {filteredWords.length > 0 ? (
                 <div className="bg-zinc-900/50 backdrop-blur-xl p-12 rounded-3xl border border-zinc-800 w-full max-w-lg">
-                  <CheckCircle2 className="text-emerald-500 mx-auto mb-6" size={64} />
-                  <h2 className="text-3xl font-bold text-white mb-2">Congratulations!</h2>
-                  <p className="text-zinc-400 mb-10">You have finished all words in <span className="text-white font-medium">"{activeList}"</span>.</p>
+                  {isEbbinghausMode ? (
+                    <>
+                      <Clock className="text-amber-500 mx-auto mb-6" size={64} />
+                      <h2 className="text-3xl font-bold text-white mb-2">All Caught Up!</h2>
+                      <p className="text-zinc-400 mb-10">No words are due for review based on the Ebbinghaus curve. Come back later or try another list!</p>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="text-emerald-500 mx-auto mb-6" size={64} />
+                      <h2 className="text-3xl font-bold text-white mb-2">Congratulations!</h2>
+                      <p className="text-zinc-400 mb-10">You have finished all words in <span className="text-white font-medium">"{activeList}"</span>.</p>
+                    </>
+                  )}
                   
                   <div className="flex flex-col space-y-3">
-                    {sessionErrors.size > 0 && (
+                    {!isEbbinghausMode && sessionErrors.size > 0 && (
                       <button
                         onClick={startReview}
                         className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-2xl transition-all transform hover:scale-[1.02] active:scale-[0.98]"
@@ -861,7 +931,7 @@ export default function App() {
       </AnimatePresence>
 
       <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
-        Rev 1.1 Designed by robin.yj.ye@gmail.com in Mar 2026
+        Rev 1.2 Designed by robin.yj.ye@gmail.com in Mar 2026
       </div>
     </div>
   );

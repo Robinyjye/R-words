@@ -15,4 +15,5 @@ export interface WordState extends WordData {
   has_error?: boolean;
   is_completed_normal?: boolean;
   is_completed_dictation?: boolean;
+  ebbinghaus_stage?: number; // 0 to N
 }
