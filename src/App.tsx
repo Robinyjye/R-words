@@ -8,7 +8,8 @@ import { WordState } from './utils/word';
 import { loadWords, saveWords, getNextWordToReview } from './utils/storage';
 import { playKeystrokeSound, playSuccessSound, speakWord, playComboSound } from './utils/audio';
 import { ImportModal } from './components/ImportModal';
-import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye } from 'lucide-react';
+import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download } from 'lucide-react';
+import Papa from 'papaparse';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 
@@ -217,18 +218,16 @@ export default function App() {
       // Check if word is complete
       if (currentBlankIdx === gameBlanks.length - 1) {
         setGameStatus('correct');
-        let isMilestone = false;
-        setCombo(prev => {
-          const newCombo = prev + 1;
-          isMilestone = newCombo % 5 === 0;
-          setMaxCombo(m => Math.max(m, newCombo));
-          return newCombo;
-        });
+        const newCombo = combo + 1;
+        const isMilestone = newCombo % 5 === 0;
+        setCombo(newCombo);
+        setMaxCombo(m => Math.max(m, newCombo));
+
         setShowCombo(true);
-        playComboSound(combo + 1);
+        playComboSound(newCombo);
         speakWord(gameWords[currentGameIdx].word);
         
-        const delay = isMilestone ? 3500 : 1200;
+        const delay = isMilestone ? (2000 + (Math.floor(newCombo / 5) - 1) * 1000) : 1200;
         setTimeout(() => {
           setShowCombo(false);
           const nextIdx = currentGameIdx + 1;
@@ -599,6 +598,37 @@ export default function App() {
     }
   }, [currentWord, filteredWords.length, progress, triggerFireworks, activeList]);
 
+  const handleExport = () => {
+    if (words.length === 0) {
+      showToast("当前没有单词可以导出。");
+      return;
+    }
+
+    // Prepare data for export with Chinese headers
+    const exportData = words.map(({ word, part_of_speech, phonetic, root, meaning, example_sentence, listName }) => ({
+      '单词': word,
+      '词性': part_of_speech,
+      '音标': phonetic,
+      '词根': root,
+      '释义': meaning,
+      '例句': example_sentence,
+      '列表名称': listName
+    }));
+
+    const csv = Papa.unparse(exportData);
+    // Add BOM for Excel UTF-8 support
+    const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `全部单词备份_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast(`已导出全部 ${words.length} 个单词到本地。`);
+  };
+
   const handleImport = (importedWords: WordState[]) => {
     // Merge with existing words, avoiding duplicates by word text
     const existingWordsMap = new Map<string, WordState>(words.map(w => [w.word.toLowerCase(), w]));
@@ -745,6 +775,13 @@ export default function App() {
                 
                 {activeList && (
                   <div className="flex items-center space-x-1">
+                    <button 
+                      onClick={handleExport}
+                      className="p-1.5 text-zinc-500 hover:text-blue-400 hover:bg-zinc-900 rounded-md transition-colors"
+                      title="Download List as CSV"
+                    >
+                      <Download size={14} />
+                    </button>
                     <button 
                       onClick={handleResetList}
                       className="p-1.5 text-zinc-500 hover:text-amber-400 hover:bg-zinc-900 rounded-md transition-colors"

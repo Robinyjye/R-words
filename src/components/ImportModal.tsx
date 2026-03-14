@@ -111,7 +111,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
       skipEmptyLines: true,
       complete: (results) => {
         // If it doesn't look like a valid CSV with a 'word' column, treat as raw text
-        if (results.errors.length > 0 || !results.meta.fields?.includes('word')) {
+        const hasWordField = results.meta.fields?.includes('word') || results.meta.fields?.includes('单词');
+        if (results.errors.length > 0 || !hasWordField) {
           // Extract words using regex
           const words = pasteContent.match(/[a-zA-Z-]+/g);
           if (words && words.length > 0) {
@@ -139,19 +140,17 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
       const wordsToEnrich: string[] = [];
       
       for (const item of data) {
-        if (item.word && typeof item.word === 'string') {
-          const wordStr = item.word.trim();
-          if (!wordStr) continue;
-          
+        const wordStr = (item.word || item['单词'])?.toString().trim();
+        if (wordStr) {
           const wordObj: WordState = {
             id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15),
-            listName: finalListName,
+            listName: item['列表名称'] || item.listName || finalListName,
             word: wordStr,
-            part_of_speech: item.part_of_speech || '',
-            phonetic: item.phonetic || '',
-            root: item.root || '',
-            meaning: item.meaning || '',
-            example_sentence: item.example_sentence || '',
+            part_of_speech: item['词性'] || item.part_of_speech || '',
+            phonetic: item['音标'] || item.phonetic || '',
+            root: item['词根'] || item.root || '',
+            meaning: item['释义'] || item.meaning || '',
+            example_sentence: item['例句'] || item.example_sentence || '',
             review_count: 0,
             last_review_time: null,
             is_completed_normal: false,
