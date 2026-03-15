@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { WordState } from './utils/word';
-import { loadWords, saveWords, getNextWordToReview } from './utils/storage';
+import { loadWords, saveWords, getNextWordToReview, isWordDue } from './utils/storage';
 import { playKeystrokeSound, playSuccessSound, speakWord, playComboSound } from './utils/audio';
 import { ImportModal } from './components/ImportModal';
 import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download } from 'lucide-react';
@@ -68,10 +68,29 @@ export default function App() {
   }, []);
 
   const lists = useMemo(() => {
-    const uniqueLists = Array.from(new Set(words.map(w => w.listName || 'Default List')));
-    if (uniqueLists.length === 0) return ['Default List'];
-    return uniqueLists;
-  }, [words]);
+    const now = Date.now();
+    const listMap = new Map<string, boolean>();
+    
+    words.forEach(w => {
+      const name = w.listName || 'Default List';
+      if (listMap.get(name)) return;
+      
+      const due = isWordDue(w, isDictationMode, now);
+      if (due) {
+        listMap.set(name, true);
+      } else if (!listMap.has(name)) {
+        listMap.set(name, false);
+      }
+    });
+
+    const uniqueNames: string[] = Array.from(new Set(words.map(w => w.listName || 'Default List')));
+    if (uniqueNames.length === 0) return [{ name: 'Default List', isDue: false }];
+    
+    return uniqueNames.map(name => ({
+      name,
+      isDue: listMap.get(name) || false
+    }));
+  }, [words, isDictationMode]);
 
   const filteredWords = useMemo(() => {
     return words.filter(w => (w.listName || 'Default List') === activeList);
@@ -773,7 +792,9 @@ export default function App() {
                     className="appearance-none bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-lg pl-3 pr-8 py-1.5 focus:outline-none focus:border-emerald-500/50 cursor-pointer"
                   >
                     {lists.map(list => (
-                      <option key={list} value={list}>{list}</option>
+                      <option key={list.name} value={list.name}>
+                        {list.isDue ? '🟡 ' : ''}{list.name}
+                      </option>
                     ))}
                   </select>
                   <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />

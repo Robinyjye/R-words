@@ -21,7 +21,7 @@ export const saveWords = (words: WordState[]) => {
 };
 
 // Ebbinghaus intervals in milliseconds
-const EBBINGHAUS_INTERVALS = [
+export const EBBINGHAUS_INTERVALS = [
   0,                  // Stage 0: New word
   5 * 60 * 1000,      // Stage 1: 5 mins
   30 * 60 * 1000,     // Stage 2: 30 mins
@@ -34,6 +34,17 @@ const EBBINGHAUS_INTERVALS = [
   30 * 24 * 60 * 60 * 1000  // Stage 9: 30 days
 ];
 
+export const isWordDue = (w: WordState, isDictationMode: boolean, now: number): boolean => {
+  const stage = w.ebbinghaus_stage || 0;
+  if (stage === 0) return true; 
+  
+  const lastReview = w.last_review_time || 0;
+  const interval = EBBINGHAUS_INTERVALS[stage] || EBBINGHAUS_INTERVALS[EBBINGHAUS_INTERVALS.length - 1];
+  const isCompleted = isDictationMode ? w.is_completed_dictation : w.is_completed_normal;
+  
+  return !isCompleted && (now - lastReview >= interval);
+};
+
 export const getNextWordToReview = (
   words: WordState[], 
   isDictationMode: boolean = false,
@@ -45,19 +56,7 @@ export const getNextWordToReview = (
     const now = Date.now();
     
     // 1. Find words that are due for review
-    const dueWords = words.filter(w => {
-      const stage = w.ebbinghaus_stage || 0;
-      if (stage === 0) return true; // New words are always "due" if not completed
-      
-      const lastReview = w.last_review_time || 0;
-      const interval = EBBINGHAUS_INTERVALS[stage] || EBBINGHAUS_INTERVALS[EBBINGHAUS_INTERVALS.length - 1];
-      
-      // If it's already completed in this session/mode, we might want to skip it unless it's a new day
-      // But for Ebbinghaus, we follow the intervals.
-      const isCompleted = isDictationMode ? w.is_completed_dictation : w.is_completed_normal;
-      
-      return !isCompleted && (now - lastReview >= interval);
-    });
+    const dueWords = words.filter(w => isWordDue(w, isDictationMode, now));
 
     if (dueWords.length > 0) {
       // Sort by stage (higher stage first or lower? usually lower first to reinforce new ones)
