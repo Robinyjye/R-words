@@ -363,6 +363,9 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!currentWord || isTransitioning || showImport || listToRename || listToDelete) return;
 
+      // Don't handle keys if user is typing in an input/select
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
+
       // Ignore modifier keys
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
@@ -763,7 +766,10 @@ export default function App() {
                 <div className="relative">
                   <select 
                     value={activeList}
-                    onChange={(e) => setActiveList(e.target.value)}
+                    onChange={(e) => {
+                      setActiveList(e.target.value);
+                      (e.target as HTMLSelectElement).blur();
+                    }}
                     className="appearance-none bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-lg pl-3 pr-8 py-1.5 focus:outline-none focus:border-emerald-500/50 cursor-pointer"
                   >
                     {lists.map(list => (
