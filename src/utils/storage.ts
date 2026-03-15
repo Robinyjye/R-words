@@ -35,6 +35,7 @@ export const EBBINGHAUS_INTERVALS = [
 ];
 
 export const isWordDue = (w: WordState, isDictationMode: boolean, now: number): boolean => {
+  if (w.is_mastered) return false;
   const stage = w.ebbinghaus_stage || 0;
   if (stage === 0) return true; 
   
@@ -48,7 +49,8 @@ export const isWordDue = (w: WordState, isDictationMode: boolean, now: number): 
 export const getNextWordToReview = (
   words: WordState[], 
   isDictationMode: boolean = false,
-  isEbbinghausMode: boolean = false
+  isEbbinghausMode: boolean = false,
+  includeMastered: boolean = false
 ): WordState | null => {
   if (words.length === 0) return null;
   
@@ -56,11 +58,21 @@ export const getNextWordToReview = (
     const now = Date.now();
     
     // 1. Find words that are due for review
-    const dueWords = words.filter(w => isWordDue(w, isDictationMode, now));
+    const dueWords = words.filter(w => {
+      if (includeMastered) {
+        // If including mastered, we ignore the is_mastered check in isWordDue
+        // but since isWordDue is a separate function, we'll implement the logic here
+        const stage = w.ebbinghaus_stage || 0;
+        if (stage === 0) return true;
+        const lastReview = w.last_review_time || 0;
+        const interval = EBBINGHAUS_INTERVALS[stage] || EBBINGHAUS_INTERVALS[EBBINGHAUS_INTERVALS.length - 1];
+        const isCompleted = isDictationMode ? w.is_completed_dictation : w.is_completed_normal;
+        return !isCompleted && (now - lastReview >= interval);
+      }
+      return isWordDue(w, isDictationMode, now);
+    });
 
     if (dueWords.length > 0) {
-      // Sort by stage (higher stage first or lower? usually lower first to reinforce new ones)
-      // and then by last review time
       return dueWords.sort((a, b) => {
         const stageA = a.ebbinghaus_stage || 0;
         const stageB = b.ebbinghaus_stage || 0;
@@ -68,16 +80,12 @@ export const getNextWordToReview = (
         return (a.last_review_time || 0) - (b.last_review_time || 0);
       })[0];
     }
-
-    // If no words are strictly "due", we could either return null or the next "closest" word
-    // The user might want to know there's nothing to review.
-    // But for a better UX, if they are in Ebbinghaus mode and everything is done, maybe show a message.
     return null;
   }
 
   // Sequential mode: Find the first word that is not completed in the current mode
   const nextWord = words.find(w => 
-    isDictationMode ? !w.is_completed_dictation : !w.is_completed_normal
+    (includeMastered || !w.is_mastered) && (isDictationMode ? !w.is_completed_dictation : !w.is_completed_normal)
   );
   
   return nextWord || null;

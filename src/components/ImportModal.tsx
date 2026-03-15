@@ -8,9 +8,10 @@ import { Upload, X, FileText, ClipboardPaste, Loader2 } from 'lucide-react';
 interface ImportModalProps {
   onImport: (words: WordState[]) => void;
   onClose: () => void;
+  existingWords: WordState[];
 }
 
-export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) => {
+export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, existingWords }) => {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'file' | 'paste'>('paste');
   const [pasteContent, setPasteContent] = useState('');
@@ -138,13 +139,22 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
     try {
       const validWords: WordState[] = [];
       const wordsToEnrich: string[] = [];
+      const existingWordSet = new Set(existingWords.map(w => w.word.toLowerCase()));
+      let skippedCount = 0;
       
       for (const item of data) {
         const wordStr = (item.word || item['单词'])?.toString().trim();
         if (wordStr) {
+          const lowerWord = wordStr.toLowerCase();
+          if (existingWordSet.has(lowerWord)) {
+            skippedCount++;
+            continue;
+          }
+
+          const isMastered = item.is_mastered === true || item['已学会'] === true || false;
           const wordObj: WordState = {
             id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15),
-            listName: item['列表名称'] || item.listName || finalListName,
+            listName: isMastered ? 'Mastered Words' : (item['列表名称'] || item.listName || finalListName),
             word: wordStr,
             part_of_speech: item['词性'] || item.part_of_speech || '',
             phonetic: item['音标'] || item.phonetic || '',
@@ -155,6 +165,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
             last_review_time: null,
             is_completed_normal: false,
             is_completed_dictation: false,
+            is_mastered: isMastered,
           };
 
           if (!wordObj.meaning || !wordObj.example_sentence) {
@@ -165,9 +176,17 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
       }
 
       if (validWords.length === 0) {
-        setError('No valid words found. Ensure your data has a "word" field or is a list of words.');
+        if (skippedCount > 0) {
+          setError(`所有导入的单词 (${skippedCount}个) 已存在于词库中。`);
+        } else {
+          setError('No valid words found. Ensure your data has a "word" field or is a list of words.');
+        }
         setIsEnriching(false);
         return;
+      }
+
+      if (skippedCount > 0) {
+        console.log(`Skipped ${skippedCount} existing words.`);
       }
 
       if (wordsToEnrich.length > 0) {

@@ -8,13 +8,14 @@ import { WordState } from './utils/word';
 import { loadWords, saveWords, getNextWordToReview, isWordDue } from './utils/storage';
 import { playKeystrokeSound, playSuccessSound, speakWord, playComboSound } from './utils/audio';
 import { ImportModal } from './components/ImportModal';
-import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download } from 'lucide-react';
+import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, CopyX } from 'lucide-react';
 import Papa from 'papaparse';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 
 export default function App() {
   const [words, setWords] = useState<WordState[]>([]);
+  const masteredCount = words.filter(w => w.is_mastered).length;
   const [currentWord, setCurrentWord] = useState<WordState | null>(null);
   const [input, setInput] = useState('');
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -60,6 +61,8 @@ export default function App() {
   const [listToRename, setListToRename] = useState<string | null>(null);
   const [newListName, setNewListName] = useState('');
   const [listToDelete, setListToDelete] = useState<string | null>(null);
+  const [isEditingWord, setIsEditingWord] = useState(false);
+  const [editingWordData, setEditingWordData] = useState<WordState | null>(null);
 
   // Load words on mount
   useEffect(() => {
@@ -67,12 +70,28 @@ export default function App() {
     setWords(loadedWords);
   }, []);
 
+  // Migration: Ensure all mastered words are in the 'Mastered Words' list
+  useEffect(() => {
+    if (words.length === 0) return;
+    const needsMigration = words.some(w => w.is_mastered && w.listName !== 'Mastered Words');
+    if (needsMigration) {
+      const migratedWords = words.map(w => 
+        w.is_mastered ? { ...w, listName: 'Mastered Words' } : w
+      );
+      setWords(migratedWords);
+      saveWords(migratedWords);
+    }
+  }, [words]);
+
   const lists = useMemo(() => {
     const now = Date.now();
     const listMap = new Map<string, boolean>();
+    const namesSet = new Set<string>();
     
     words.forEach(w => {
       const name = w.listName || 'Default List';
+      namesSet.add(name);
+      
       if (listMap.get(name)) return;
       
       const due = isWordDue(w, isDictationMode, now);
@@ -83,9 +102,25 @@ export default function App() {
       }
     });
 
-    const uniqueNames: string[] = Array.from(new Set(words.map(w => w.listName || 'Default List')));
+    if (masteredCount > 0) {
+      namesSet.add('Mastered Words');
+    }
+    
+    // Force "Mastered Words" to be present so user can see it
+    namesSet.add('Mastered Words');
+
+    const uniqueNames = Array.from(namesSet);
     if (uniqueNames.length === 0) return [{ name: 'Default List', isDue: false }];
     
+    // Sort: Default List first, then alphabetical, Mastered Words last
+    uniqueNames.sort((a, b) => {
+      if (a === 'Default List') return -1;
+      if (b === 'Default List') return 1;
+      if (a === 'Mastered Words') return 1;
+      if (b === 'Mastered Words') return -1;
+      return a.localeCompare(b);
+    });
+
     return uniqueNames.map(name => ({
       name,
       isDue: listMap.get(name) || false
@@ -296,7 +331,12 @@ export default function App() {
           return;
         }
 
-        const next = getNextWordToReview(filteredWords, isDictationMode, isEbbinghausMode);
+        const next = getNextWordToReview(
+          filteredWords, 
+          isDictationMode, 
+          isEbbinghausMode,
+          activeList === 'Mastered Words'
+        );
         
         if (next) {
           if (next.id !== currentWordId) {
@@ -505,26 +545,59 @@ export default function App() {
     }, 500);
   }, [currentWord, words, isDictationMode, hasError, isHinted, filteredWords]);
 
-  const handleResetList = () => {
-    const updatedWords = words.map(w => {
-      const isInActiveList = (w.listName || 'Default List') === activeList;
-      if (isInActiveList) {
-        return { 
-          ...w, 
-          is_completed_normal: false, 
-          is_completed_dictation: false, 
-          has_error: false,
-          ebbinghaus_stage: 0,
-          last_review_time: null,
-          review_count: 0
-        };
+  const handleRemoveDuplicates = () => {
+    if (words.length === 0) return;
+    
+    const wordMap = new Map<string, WordState>();
+    let removedCount = 0;
+
+    // Sort words so that we keep the one with more progress if duplicates exist
+    // Higher ebbinghaus_stage or review_count first
+    const sortedWords = [...words].sort((a, b) => {
+      if ((b.ebbinghaus_stage || 0) !== (a.ebbinghaus_stage || 0)) {
+        return (b.ebbinghaus_stage || 0) - (a.ebbinghaus_stage || 0);
       }
-      return w;
+      return (b.review_count || 0) - (a.review_count || 0);
     });
+
+    sortedWords.forEach(w => {
+      const key = w.word.toLowerCase().trim();
+      if (!wordMap.has(key)) {
+        wordMap.set(key, w);
+      } else {
+        removedCount++;
+      }
+    });
+
+    if (removedCount === 0) {
+      showToast("未发现重复单词。");
+      return;
+    }
+
+    const uniqueWords = Array.from(wordMap.values());
+    setWords(uniqueWords);
+    saveWords(uniqueWords);
+    
+    // If current word was removed, reset it
+    if (currentWord && !uniqueWords.some(w => w.id === currentWord.id)) {
+      setCurrentWord(null);
+      setInput('');
+    }
+    
+    showToast(`清理完成，删除了 ${removedCount} 个重复单词。`);
+  };
+
+  const handleUpdateWord = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingWordData) return;
+
+    const updatedWords = words.map(w => w.id === editingWordData.id ? editingWordData : w);
     setWords(updatedWords);
     saveWords(updatedWords);
-    setCurrentWord(null);
-    setInput('');
+    setCurrentWord(editingWordData);
+    setIsEditingWord(false);
+    setEditingWordData(null);
+    showToast(`已更新单词 "${editingWordData.word}"`);
   };
 
   const startReview = () => {
@@ -731,6 +804,32 @@ export default function App() {
     showToast(`已删除单词 "${currentWord.word}"`);
   }, [currentWord, words]);
 
+  const handleMasterWord = useCallback(() => {
+    if (!currentWord) return;
+    
+    setIsTransitioning(true);
+    
+    const updatedWords = words.map(w => 
+      w.id === currentWord.id ? { ...w, is_mastered: true, listName: 'Mastered Words' } : w
+    );
+    
+    setWords(updatedWords);
+    saveWords(updatedWords);
+    showToast(`已标记 "${currentWord.word}" 为已学会，并移至 "Mastered Words" 列表`);
+    
+    // Transition to next word manually instead of calling handleSkip to avoid state race
+    setTimeout(() => {
+      setHistory(prev => {
+        if (prev[prev.length - 1] === currentWord.id) return prev;
+        return [...prev, currentWord.id];
+      });
+      setCurrentWord(null);
+      setIsTransitioning(false);
+      setInput('');
+      setIsViewingHistory(false);
+    }, 200);
+  }, [currentWord, words]);
+
   const showToast = (msg: string) => {
     setImportMessage(msg);
     setTimeout(() => setImportMessage(null), 3000);
@@ -767,13 +866,20 @@ export default function App() {
       <header className="p-6 flex flex-col space-y-4">
         <div className="flex justify-between items-center">
           <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2 text-zinc-400">
-              <Database size={18} />
+            <div 
+              className={`flex items-center space-x-2 transition-colors ${masteredCount > 0 ? 'cursor-pointer hover:opacity-80' : ''}`}
+              onClick={() => {
+                if (masteredCount > 0) {
+                  setActiveList('Mastered Words');
+                }
+              }}
+            >
+              <Database size={18} className="text-emerald-400" />
               <div className="flex flex-col">
-                <span className="text-[10px] font-bold tracking-wider text-zinc-500 leading-none mb-1">
-                  total: {words.length}
+                <span className="text-[10px] font-bold tracking-wider leading-none mb-1 text-emerald-400">
+                  total: {masteredCount}/{words.length}
                 </span>
-                <span className="text-sm font-medium tracking-wide text-zinc-300 leading-none">
+                <span className="text-sm font-medium tracking-wide text-zinc-100 leading-none">
                   {filteredWords.length} in list
                 </span>
               </div>
@@ -793,7 +899,7 @@ export default function App() {
                   >
                     {lists.map(list => (
                       <option key={list.name} value={list.name}>
-                        {list.isDue ? '🟡 ' : ''}{list.name}
+                        {list.name === 'Mastered Words' ? '✅ ' : (list.isDue ? '🟡 ' : '')}{list.name}
                       </option>
                     ))}
                   </select>
@@ -810,11 +916,11 @@ export default function App() {
                       <Download size={14} />
                     </button>
                     <button 
-                      onClick={handleResetList}
-                      className="p-1.5 text-zinc-500 hover:text-amber-400 hover:bg-zinc-900 rounded-md transition-colors"
-                      title="Reset List Progress"
+                      onClick={handleRemoveDuplicates}
+                      className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-zinc-900 rounded-md transition-colors"
+                      title="Remove Duplicate Words (Global)"
                     >
-                      <RotateCcw size={14} />
+                      <CopyX size={14} />
                     </button>
                     <button 
                       onClick={() => {
@@ -971,6 +1077,31 @@ export default function App() {
                     {currentWord.word}
                   </h1>
                 )}
+                {!currentWord.is_mastered && activeList !== 'Mastered Words' && (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleMasterWord();
+                    }}
+                    className="absolute bottom-2 -right-28 p-1.5 text-zinc-500 hover:text-indigo-400 hover:bg-indigo-400/10 rounded-full transition-colors focus:outline-none"
+                    title="I've mastered this word"
+                    tabIndex={-1}
+                  >
+                    <CheckCircle2 size={16} />
+                  </button>
+                )}
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setEditingWordData({ ...currentWord });
+                    setIsEditingWord(true);
+                  }}
+                  className="absolute bottom-2 -right-20 p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
+                  title="Edit this word"
+                  tabIndex={-1}
+                >
+                  <Pencil size={16} />
+                </button>
                 <button
                   onClick={(e) => {
                     e.preventDefault();
@@ -1119,6 +1250,7 @@ export default function App() {
         <ImportModal
           onImport={handleImport}
           onClose={() => setShowImport(false)}
+          existingWords={words}
         />
       )}
 
@@ -1181,6 +1313,131 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Edit Word Modal */}
+      <AnimatePresence>
+        {isEditingWord && editingWordData && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-2xl p-6 shadow-2xl"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold text-white">编辑单词</h2>
+                <button 
+                  onClick={() => setIsEditingWord(false)}
+                  className="text-zinc-500 hover:text-white transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateWord} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">单词</label>
+                  <input
+                    type="text"
+                    value={editingWordData.word}
+                    onChange={(e) => setEditingWordData({ ...editingWordData, word: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">词性</label>
+                    <input
+                      type="text"
+                      value={editingWordData.part_of_speech}
+                      onChange={(e) => setEditingWordData({ ...editingWordData, part_of_speech: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50"
+                      placeholder="n. / v. / adj."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">列表名称</label>
+                    <input
+                      type="text"
+                      value={editingWordData.listName || ''}
+                      onChange={(e) => setEditingWordData({ ...editingWordData, listName: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50"
+                      placeholder="Default List"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">音标</label>
+                    <input
+                      type="text"
+                      value={editingWordData.phonetic || ''}
+                      onChange={(e) => setEditingWordData({ ...editingWordData, phonetic: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50"
+                    />
+                  </div>
+                  <div className="flex items-center space-x-2 pt-6">
+                    <input
+                      type="checkbox"
+                      id="edit-mastered"
+                      checked={editingWordData.is_mastered || false}
+                      onChange={(e) => {
+                        const isMastered = e.target.checked;
+                        setEditingWordData({ 
+                          ...editingWordData, 
+                          is_mastered: isMastered,
+                          listName: isMastered ? 'Mastered Words' : (editingWordData.listName === 'Mastered Words' ? 'Default List' : editingWordData.listName)
+                        });
+                      }}
+                      className="w-4 h-4 bg-zinc-950 border-zinc-800 rounded text-emerald-500 focus:ring-emerald-500/50"
+                    />
+                    <label htmlFor="edit-mastered" className="text-sm font-medium text-zinc-300 cursor-pointer">已学会</label>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">释义</label>
+                  <textarea
+                    value={editingWordData.meaning}
+                    onChange={(e) => setEditingWordData({ ...editingWordData, meaning: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50 h-20 resize-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">例句</label>
+                  <textarea
+                    value={editingWordData.example_sentence || ''}
+                    onChange={(e) => setEditingWordData({ ...editingWordData, example_sentence: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50 h-20 resize-none"
+                  />
+                </div>
+
+                <div className="flex space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingWord(false)}
+                    className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl font-bold transition-colors"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-colors"
+                  >
+                    保存修改
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {importMessage && (
@@ -1343,7 +1600,7 @@ export default function App() {
       </AnimatePresence>
 
       <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
-        Rev 1.3 Designed by robin.yj.ye@gmail.com in Mar 2026
+        Rev 1.5 Designed by robin.yj.ye@gmail.com in Mar 2026
       </div>
     </div>
   );
