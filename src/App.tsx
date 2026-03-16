@@ -1009,7 +1009,7 @@ export default function App() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-emerald-500/30">
       {/* Header */}
       <header className="p-6 flex flex-col space-y-4">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center relative">
           <div className="flex items-center space-x-4">
             <div 
               className={`flex items-center space-x-2 transition-colors ${masteredCount > 0 ? 'cursor-pointer hover:opacity-80' : ''}`}
@@ -1091,7 +1091,7 @@ export default function App() {
           </div>
           
           {/* Search Bar */}
-          <div className="flex-1 max-w-sm mx-8 hidden md:block">
+          <div className="absolute left-1/2 -translate-x-1/2 w-full max-w-[192px] hidden md:block">
             <div className="relative group">
               <input
                 type="text"
