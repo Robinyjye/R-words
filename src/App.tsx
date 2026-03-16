@@ -15,12 +15,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 
 interface DailyStat {
-  time: number; // seconds
   count: number; // words
 }
 
 interface Stats {
-  totalTime: number;
   totalCount: number;
   daily: { [date: string]: DailyStat };
 }
@@ -165,47 +163,15 @@ export default function App() {
         console.error('Failed to parse stats', e);
       }
     }
-    return { totalTime: 0, totalCount: 0, daily: {} };
+    return { totalCount: 0, daily: {} };
   });
   const [showStats, setShowStats] = useState(false);
-  const [sessionStartTime, setSessionStartTime] = useState(Date.now());
   const [sessionWordCount, setSessionWordCount] = useState(0);
 
   // Update stats in localStorage
   useEffect(() => {
     localStorage.setItem('ebbinghaus_stats', JSON.stringify(stats));
   }, [stats]);
-
-  // Track session time
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = Date.now();
-      const elapsedSeconds = Math.floor((now - sessionStartTime) / 1000);
-      if (elapsedSeconds > 0) {
-        const today = new Date().toISOString().split('T')[0];
-        setStats(prev => {
-          const daily = { ...prev.daily };
-          if (!daily[today]) daily[today] = { time: 0, count: 0 };
-          
-          // We only add the delta (1 second)
-          return {
-            ...prev,
-            totalTime: prev.totalTime + 1,
-            daily: {
-              ...daily,
-              [today]: {
-                ...daily[today],
-                time: daily[today].time + 1
-              }
-            }
-          };
-        });
-        setSessionStartTime(now);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [sessionStartTime]);
 
   // Trigger effect on every 5 combo with increasing intensity
   useEffect(() => {
@@ -612,7 +578,7 @@ export default function App() {
     const today = new Date().toISOString().split('T')[0];
     setStats(prev => {
       const daily = { ...prev.daily };
-      if (!daily[today]) daily[today] = { time: 0, count: 0 };
+      if (!daily[today]) daily[today] = { count: 0 };
       return {
         ...prev,
         totalCount: prev.totalCount + 1,

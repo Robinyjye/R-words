@@ -3,12 +3,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Clock, BookOpen, Calendar, TrendingUp } from 'lucide-react';
 
 interface DailyStat {
-  time: number; // seconds
   count: number; // words
 }
 
 interface Stats {
-  totalTime: number;
   totalCount: number;
   daily: { [date: string]: DailyStat };
 }
@@ -21,17 +19,7 @@ interface StatsModalProps {
 
 export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
   const today = new Date().toISOString().split('T')[0];
-  const todayStats = stats.daily[today] || { time: 0, count: 0 };
-
-  const formatTime = (seconds: number) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    
-    if (h > 0) return `${h}h ${m}m`;
-    if (m > 0) return `${m}m ${s}s`;
-    return `${s}s`;
-  };
+  const todayStats = stats.daily[today] || { count: 0 };
 
   // Generate last 60 days for the heatmap
   const heatmapDays = Array.from({ length: 70 }, (_, i) => {
@@ -84,7 +72,7 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
 
             <div className="p-8 space-y-10">
               {/* Top Stats Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
+              <div className="grid grid-cols-2 gap-8">
                 <div className="space-y-1">
                   <div className="text-3xl font-mono font-bold text-white tracking-tighter">
                     {todayStats.count}
@@ -92,22 +80,10 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
                   <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-500">今日单词</div>
                 </div>
                 <div className="space-y-1">
-                  <div className="text-3xl font-mono font-bold text-white tracking-tighter">
-                    {formatTime(todayStats.time)}
-                  </div>
-                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-500">今日时间</div>
-                </div>
-                <div className="space-y-1">
                   <div className="text-3xl font-mono font-bold text-emerald-400 tracking-tighter">
                     {stats.totalCount}
                   </div>
                   <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-500">累计单词</div>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-3xl font-mono font-bold text-emerald-400 tracking-tighter">
-                    {formatTime(stats.totalTime)}
-                  </div>
-                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-500">累计时间</div>
                 </div>
               </div>
 
