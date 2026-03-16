@@ -8,10 +8,22 @@ import { WordState } from './utils/word';
 import { loadWords, saveWords, getNextWordToReview, isWordDue } from './utils/storage';
 import { playKeystrokeSound, playSuccessSound, speakWord, playComboSound } from './utils/audio';
 import { ImportModal } from './components/ImportModal';
-import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, CopyX } from 'lucide-react';
+import { StatsModal } from './components/StatsModal';
+import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, CopyX, BarChart2 } from 'lucide-react';
 import Papa from 'papaparse';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
+
+interface DailyStat {
+  time: number; // seconds
+  count: number; // words
+}
+
+interface Stats {
+  totalTime: number;
+  totalCount: number;
+  daily: { [date: string]: DailyStat };
+}
 
 export default function App() {
   const [words, setWords] = useState<WordState[]>([]);
@@ -142,6 +154,58 @@ export default function App() {
   const [showCombo, setShowCombo] = useState(false);
   const [gameStatus, setGameStatus] = useState<'playing' | 'correct' | 'finished'>('playing');
   const [isPeeking, setIsPeeking] = useState(false);
+
+  // Statistics State
+  const [stats, setStats] = useState<Stats>(() => {
+    const saved = localStorage.getItem('ebbinghaus_stats');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse stats', e);
+      }
+    }
+    return { totalTime: 0, totalCount: 0, daily: {} };
+  });
+  const [showStats, setShowStats] = useState(false);
+  const [sessionStartTime, setSessionStartTime] = useState(Date.now());
+  const [sessionWordCount, setSessionWordCount] = useState(0);
+
+  // Update stats in localStorage
+  useEffect(() => {
+    localStorage.setItem('ebbinghaus_stats', JSON.stringify(stats));
+  }, [stats]);
+
+  // Track session time
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const elapsedSeconds = Math.floor((now - sessionStartTime) / 1000);
+      if (elapsedSeconds > 0) {
+        const today = new Date().toISOString().split('T')[0];
+        setStats(prev => {
+          const daily = { ...prev.daily };
+          if (!daily[today]) daily[today] = { time: 0, count: 0 };
+          
+          // We only add the delta (1 second)
+          return {
+            ...prev,
+            totalTime: prev.totalTime + 1,
+            daily: {
+              ...daily,
+              [today]: {
+                ...daily[today],
+                time: daily[today].time + 1
+              }
+            }
+          };
+        });
+        setSessionStartTime(now);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [sessionStartTime]);
 
   // Trigger effect on every 5 combo with increasing intensity
   useEffect(() => {
@@ -463,6 +527,13 @@ export default function App() {
         }
       }
 
+      // Handle Shift to read word
+      if (e.key === 'Shift') {
+        e.preventDefault();
+        speakWord(currentWord.word);
+        return;
+      }
+
       // Handle letter input (only allow letters and spaces/hyphens if they are in the word)
       if (e.key.length === 1) {
         const targetWord = currentWord.word;
@@ -536,6 +607,25 @@ export default function App() {
     const updatedWords = words.map(w => w.id === currentWord.id ? updatedWord : w);
     setWords(updatedWords);
     saveWords(updatedWords);
+
+    // Update stats
+    const today = new Date().toISOString().split('T')[0];
+    setStats(prev => {
+      const daily = { ...prev.daily };
+      if (!daily[today]) daily[today] = { time: 0, count: 0 };
+      return {
+        ...prev,
+        totalCount: prev.totalCount + 1,
+        daily: {
+          ...daily,
+          [today]: {
+            ...daily[today],
+            count: daily[today].count + 1
+          }
+        }
+      };
+    });
+    setSessionWordCount(prev => prev + 1);
 
     // Pause before next word
     setTimeout(() => {
@@ -983,6 +1073,13 @@ export default function App() {
               <Gamepad2 size={18} />
             </button>
             <button
+              onClick={() => setShowStats(true)}
+              className="p-2 rounded-full border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 hover:bg-zinc-900 transition-colors flex items-center justify-center"
+              title="Statistics"
+            >
+              <BarChart2 size={18} />
+            </button>
+            <button
               onClick={() => setShowImport(true)}
               className="text-sm font-medium text-zinc-400 hover:text-white transition-colors px-4 py-2 rounded-full border border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900"
             >
@@ -1253,6 +1350,12 @@ export default function App() {
           existingWords={words}
         />
       )}
+
+      <StatsModal
+        isOpen={showStats}
+        onClose={() => setShowStats(false)}
+        stats={stats}
+      />
 
       {/* Rename List Modal */}
       {listToRename && (
@@ -1600,7 +1703,7 @@ export default function App() {
       </AnimatePresence>
 
       <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
-        Rev 1.5 Designed by robin.yj.ye@gmail.com in Mar 2026
+        Rev 1.6 Designed by robin.yj.ye@gmail.com in Mar 2026
       </div>
     </div>
   );
