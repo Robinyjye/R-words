@@ -6,10 +6,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { WordState } from './utils/word';
 import { loadWords, saveWords, getNextWordToReview, isWordDue } from './utils/storage';
+import { enrichWords } from './utils/gemini';
 import { playKeystrokeSound, playSuccessSound, speakWord, playComboSound } from './utils/audio';
 import { ImportModal } from './components/ImportModal';
 import { StatsModal } from './components/StatsModal';
-import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, CopyX, BarChart2 } from 'lucide-react';
+import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, CopyX, BarChart2, Search } from 'lucide-react';
 import Papa from 'papaparse';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
@@ -152,6 +153,94 @@ export default function App() {
   const [showCombo, setShowCombo] = useState(false);
   const [gameStatus, setGameStatus] = useState<'playing' | 'correct' | 'finished'>('playing');
   const [isPeeking, setIsPeeking] = useState(false);
+
+  // Search State
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+
+  const handleSearch = useCallback(async () => {
+    if (!searchTerm.trim() || isSearching) return;
+    const normalizedTerm = searchTerm.trim();
+    
+    // Check if word exists
+    const existingWord = words.find(w => w.word.toLowerCase() === normalizedTerm.toLowerCase());
+    
+    if (existingWord) {
+      // If word exists, switch to its list and set as current word
+      setActiveList(existingWord.listName || 'Default List');
+      setCurrentWord(existingWord);
+      // If it's already completed, we might want to see it anyway
+      if (isDictationMode ? existingWord.is_completed_dictation : existingWord.is_completed_normal) {
+        setIsViewingHistory(true);
+      } else {
+        setIsViewingHistory(false);
+      }
+      setInput('');
+      setSearchTerm('');
+    } else {
+      setIsSearching(true);
+      try {
+        // Fetch word details using AI
+        const enriched = await enrichWords([normalizedTerm]);
+        const details = enriched[0] || {};
+        
+        // If word doesn't exist, add to "search records" list
+        const newWord: WordState = {
+          id: crypto.randomUUID(),
+          word: normalizedTerm,
+          meaning: details.meaning || '', 
+          part_of_speech: details.part_of_speech || '',
+          phonetic: details.phonetic || '',
+          root: details.root || '',
+          example_sentence: details.example_sentence || '',
+          review_count: 0,
+          last_review_time: 0,
+          has_error: false,
+          is_completed_normal: false,
+          is_completed_dictation: false,
+          ebbinghaus_stage: 0,
+          listName: 'search records'
+        };
+        
+        const updatedWords = [...words, newWord];
+        setWords(updatedWords);
+        saveWords(updatedWords);
+        setActiveList('search records');
+        setCurrentWord(newWord);
+        setIsViewingHistory(false);
+        setInput('');
+        setSearchTerm('');
+      } catch (error) {
+        console.error("Search enrichment failed:", error);
+        // Fallback to empty word if AI fails
+        const newWord: WordState = {
+          id: crypto.randomUUID(),
+          word: normalizedTerm,
+          meaning: '', 
+          part_of_speech: '',
+          root: '',
+          example_sentence: '',
+          review_count: 0,
+          last_review_time: 0,
+          has_error: false,
+          is_completed_normal: false,
+          is_completed_dictation: false,
+          ebbinghaus_stage: 0,
+          listName: 'search records'
+        };
+        const updatedWords = [...words, newWord];
+        setWords(updatedWords);
+        saveWords(updatedWords);
+        setActiveList('search records');
+        setCurrentWord(newWord);
+        setIsViewingHistory(false);
+        setInput('');
+        setSearchTerm('');
+      } finally {
+        setIsSearching(false);
+      }
+    }
+  }, [searchTerm, words, isDictationMode, isSearching]);
 
   // Statistics State
   const [stats, setStats] = useState<Stats>(() => {
@@ -1001,6 +1090,34 @@ export default function App() {
             )}
           </div>
           
+          {/* Search Bar */}
+          <div className="flex-1 max-w-sm mx-8 hidden md:block">
+            <div className="relative group">
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSearch();
+                  }
+                }}
+                placeholder="Search or add word..."
+                className="w-full bg-zinc-900/50 border border-zinc-500 rounded-full py-1.5 pl-4 pr-10 text-sm text-zinc-300 focus:outline-none focus:border-white focus:bg-zinc-900 transition-all"
+              />
+              <button
+                onClick={handleSearch}
+                disabled={isSearching}
+                className={`absolute right-1 top-1/2 -translate-y-1/2 p-1.5 transition-colors ${
+                  isSearching ? 'text-emerald-500 animate-pulse' : 'text-zinc-500 hover:text-emerald-400'
+                }`}
+                title="Search or Add Word"
+              >
+                <Search size={16} />
+              </button>
+            </div>
+          </div>
+          
           <div className="flex items-center space-x-3">
             <button
               onClick={() => setIsEbbinghausMode(!isEbbinghausMode)}
@@ -1669,7 +1786,7 @@ export default function App() {
       </AnimatePresence>
 
       <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
-        Rev 1.6 Designed by robin.yj.ye@gmail.com in Mar 2026
+        Rev 2.0 Designed by robin.yj.ye@gmail.com in Mar 2026
       </div>
     </div>
   );
