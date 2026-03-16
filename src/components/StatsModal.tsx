@@ -58,7 +58,7 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
             <div className="flex items-center justify-between p-6 border-bottom border-zinc-800">
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-emerald-500/10 rounded-lg">
-                  <TrendingUp className="text-emerald-400" size={20} />
+                  <TrendingUp className="text-white" size={20} />
                 </div>
                 <h2 className="text-xl font-bold text-white tracking-tight">练习统计</h2>
               </div>
@@ -80,7 +80,7 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
                   <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-500">今日单词</div>
                 </div>
                 <div className="space-y-1">
-                  <div className="text-3xl font-mono font-bold text-emerald-400 tracking-tighter">
+                  <div className="text-3xl font-mono font-bold text-white tracking-tighter">
                     {stats.totalCount}
                   </div>
                   <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-500">累计单词</div>

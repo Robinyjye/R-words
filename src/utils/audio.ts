@@ -12,23 +12,10 @@ const getAudioContext = () => {
   return audioCtx;
 };
 
-// Preload sounds
+// Preload sounds - Removed external fetching to avoid "Failed to fetch" errors
 const loadSounds = async () => {
-  try {
-    const ctx = getAudioContext();
-    
-    // Keystroke sound
-    const ksResponse = await fetch('https://www.soundjay.com/communication/computer-keyboard-1.mp3');
-    const ksArrayBuffer = await ksResponse.arrayBuffer();
-    keystrokeBuffer = await ctx.decodeAudioData(ksArrayBuffer);
-    
-    // Success sound
-    const scResponse = await fetch('https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3');
-    const scArrayBuffer = await scResponse.arrayBuffer();
-    successBuffer = await ctx.decodeAudioData(scArrayBuffer);
-  } catch (e) {
-    console.error('Failed to load sounds', e);
-  }
+  // We rely on synthesized sounds as they are more reliable than external assets
+  console.log('Using synthesized sounds for audio feedback');
 };
 
 // Start loading immediately

@@ -4,6 +4,7 @@ export interface WordData {
   phonetic?: string;
   root: string;
   meaning: string;
+  phrase?: string;
   example_sentence?: string;
 }
 

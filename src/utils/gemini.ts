@@ -17,7 +17,7 @@ function getAI() {
 export async function enrichWords(words: string[]): Promise<Record<string, any>[]> {
   if (!words.length) return [];
   
-  const prompt = `Please provide the part of speech, phonetic transcription (IPA), root/affix analysis, Chinese meaning, and an English example sentence for the following English words:\n${words.join(', ')}`;
+  const prompt = `Please provide the part of speech, phonetic transcription (IPA), root/affix analysis, Chinese meaning, a common phrase using the word, and an English example sentence for the following English words:\n${words.join(', ')}`;
   
   try {
     const aiInstance = getAI();
@@ -39,9 +39,10 @@ export async function enrichWords(words: string[]): Promise<Record<string, any>[
               phonetic: { type: Type.STRING, description: 'International Phonetic Alphabet (IPA) transcription (e.g., /əˈbændən/)' },
               root: { type: Type.STRING, description: 'Root and affix analysis (e.g., a- (not) + bandon (control)). Leave empty if none.' },
               meaning: { type: Type.STRING, description: 'Chinese meaning' },
+              phrase: { type: Type.STRING, description: 'A common phrase using the word' },
               example_sentence: { type: Type.STRING, description: 'An English example sentence using the word' }
             },
-            required: ['word', 'part_of_speech', 'phonetic', 'root', 'meaning', 'example_sentence']
+            required: ['word', 'part_of_speech', 'phonetic', 'root', 'meaning', 'phrase', 'example_sentence']
           }
         }
       }

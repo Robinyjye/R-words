@@ -341,7 +341,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
         )}
 
         {isEnriching && activeTab === 'file' && (
-          <div className="mt-4 flex items-center justify-center space-x-2 text-emerald-400 text-sm font-medium">
+          <div className="mt-4 flex items-center justify-center space-x-2 text-white text-sm font-medium">
             <Loader2 className="animate-spin" size={16} />
             <span>
               {enrichProgress 

@@ -192,6 +192,7 @@ export default function App() {
           part_of_speech: details.part_of_speech || '',
           phonetic: details.phonetic || '',
           root: details.root || '',
+          phrase: details.phrase || '',
           example_sentence: details.example_sentence || '',
           review_count: 0,
           last_review_time: 0,
@@ -219,6 +220,7 @@ export default function App() {
           meaning: '', 
           part_of_speech: '',
           root: '',
+          phrase: '',
           example_sentence: '',
           review_count: 0,
           last_review_time: 0,
@@ -554,6 +556,26 @@ export default function App() {
         return;
       }
 
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (currentWord.phrase) {
+          speakWord(currentWord.phrase);
+        } else {
+          speakWord(currentWord.word);
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (currentWord.example_sentence) {
+          speakWord(currentWord.example_sentence);
+        } else {
+          speakWord(currentWord.word);
+        }
+        return;
+      }
+
       if (e.key === 'ArrowRight') {
         e.preventDefault();
         handleSkip();
@@ -845,12 +867,13 @@ export default function App() {
     }
 
     // Prepare data for export with Chinese headers
-    const exportData = words.map(({ word, part_of_speech, phonetic, root, meaning, example_sentence, listName }) => ({
+    const exportData = words.map(({ word, part_of_speech, phonetic, root, meaning, phrase, example_sentence, listName }) => ({
       '单词': word,
       '词性': part_of_speech,
       '音标': phonetic,
       '词根': root,
       '释义': meaning,
+      '词组': phrase,
       '例句': example_sentence,
       '列表名称': listName
     }));
@@ -1019,9 +1042,9 @@ export default function App() {
                 }
               }}
             >
-              <Database size={18} className="text-emerald-400" />
+              <Database size={18} className="text-white" />
               <div className="flex flex-col">
-                <span className="text-[10px] font-bold tracking-wider leading-none mb-1 text-emerald-400">
+                <span className="text-sm font-bold tracking-wider leading-none mb-1 text-white">
                   total: {masteredCount}/{words.length}
                 </span>
                 <span className="text-sm font-medium tracking-wide text-zinc-100 leading-none">
@@ -1211,7 +1234,7 @@ export default function App() {
                       handleBack();
                     }}
                     className="absolute top-1/2 -translate-y-1/2 -left-16 md:-left-24 p-2 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
-                    title="Previous word"
+                    title="Previous word (ArrowLeft)"
                     tabIndex={-1}
                   >
                     <ArrowLeft size={24} />
@@ -1223,7 +1246,7 @@ export default function App() {
                     handleSkip();
                   }}
                   className="absolute top-1/2 -translate-y-1/2 -right-16 md:-right-24 p-2 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
-                  title="Skip to next word"
+                  title="Skip to next word (ArrowRight)"
                   tabIndex={-1}
                 >
                   <ArrowRight size={24} />
@@ -1246,7 +1269,7 @@ export default function App() {
                       <motion.h1 
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="text-4xl md:text-5xl font-medium tracking-tight text-emerald-500 h-[72px] md:h-[96px] flex items-center justify-center"
+                        className="text-4xl md:text-5xl font-medium tracking-tight text-white h-[72px] md:h-[96px] flex items-center justify-center"
                       >
                         {currentWord.word}
                       </motion.h1>
@@ -1257,17 +1280,21 @@ export default function App() {
                     {currentWord.word}
                   </h1>
                 )}
+              </div>
+
+              {/* Word Actions */}
+              <div className="flex justify-center items-center space-x-4 mb-8">
                 {!currentWord.is_mastered && activeList !== 'Mastered Words' && (
                   <button
                     onClick={(e) => {
                       e.preventDefault();
                       handleMasterWord();
                     }}
-                    className="absolute bottom-2 -right-28 p-1.5 text-zinc-500 hover:text-indigo-400 hover:bg-indigo-400/10 rounded-full transition-colors focus:outline-none"
+                    className="p-1.5 text-zinc-500 hover:text-indigo-400 hover:bg-indigo-400/10 rounded-full transition-colors focus:outline-none"
                     title="I've mastered this word"
                     tabIndex={-1}
                   >
-                    <CheckCircle2 size={16} />
+                    <CheckCircle2 size={14} />
                   </button>
                 )}
                 <button
@@ -1276,22 +1303,22 @@ export default function App() {
                     setEditingWordData({ ...currentWord });
                     setIsEditingWord(true);
                   }}
-                  className="absolute bottom-2 -right-20 p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
+                  className="p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
                   title="Edit this word"
                   tabIndex={-1}
                 >
-                  <Pencil size={16} />
+                  <Pencil size={14} />
                 </button>
                 <button
                   onClick={(e) => {
                     e.preventDefault();
                     handleDeleteCurrentWord();
                   }}
-                  className="absolute bottom-2 -right-12 p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-400/10 rounded-full transition-colors focus:outline-none"
+                  className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-400/10 rounded-full transition-colors focus:outline-none"
                   title="Delete this word"
                   tabIndex={-1}
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={14} />
                 </button>
               </div>
 
@@ -1299,7 +1326,7 @@ export default function App() {
               <div className="flex flex-col items-center space-y-3 mb-12">
                 <div className="flex items-center space-x-2">
                   {currentWord.part_of_speech && (
-                    <span className="text-xs font-mono lowercase tracking-widest text-emerald-400/80 bg-emerald-400/10 px-3 py-1 rounded-full">
+                    <span className="text-xs font-mono lowercase tracking-widest text-white/80 bg-emerald-400/10 px-3 py-1 rounded-full">
                       {currentWord.part_of_speech}
                     </span>
                   )}
@@ -1314,7 +1341,7 @@ export default function App() {
                       speakWord(currentWord.word);
                     }}
                     className="p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
-                    title="Listen to pronunciation"
+                    title="Listen to pronunciation (Shift)"
                     tabIndex={-1}
                   >
                     <Volume2 size={16} />
@@ -1330,6 +1357,24 @@ export default function App() {
                     {currentWord.root}
                   </p>
                 )}
+                {currentWord.phrase && (
+                  <div className="flex items-center justify-center space-x-2 mt-2">
+                    <p className="text-lg text-emerald-400/90 font-medium">
+                      {currentWord.phrase}
+                    </p>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        speakWord(currentWord.phrase!);
+                      }}
+                      className="p-1 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
+                      title="Listen to phrase (ArrowUp)"
+                      tabIndex={-1}
+                    >
+                      <Volume2 size={14} />
+                    </button>
+                  </div>
+                )}
                 {currentWord.example_sentence && (
                   <div className="flex items-start justify-center space-x-2 mt-4 max-w-lg">
                     <p className="text-sm text-zinc-300 italic leading-relaxed">
@@ -1343,7 +1388,7 @@ export default function App() {
                         speakWord(currentWord.example_sentence!);
                       }}
                       className="mt-0.5 p-1 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none flex-shrink-0"
-                      title="Listen to example sentence"
+                      title="Listen to example sentence (ArrowDown)"
                       tabIndex={-1}
                     >
                       <Volume2 size={14} />
@@ -1585,6 +1630,16 @@ export default function App() {
                     />
                     <label htmlFor="edit-mastered" className="text-sm font-medium text-zinc-300 cursor-pointer">已学会</label>
                   </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">词组</label>
+                  <input
+                    type="text"
+                    value={editingWordData.phrase || ''}
+                    onChange={(e) => setEditingWordData({ ...editingWordData, phrase: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50"
+                    placeholder="Common phrase"
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">释义</label>
