@@ -1373,7 +1373,9 @@ export default function App() {
                 {currentWord.phrase && (
                   <div className="flex items-center justify-center space-x-2 mt-2">
                     <p className="text-lg text-emerald-400/90 font-medium">
-                      {currentWord.phrase}
+                      {isDictationMode 
+                        ? currentWord.phrase.replace(new RegExp(currentWord.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '___')
+                        : currentWord.phrase}
                     </p>
                     <button
                       onClick={(e) => {
