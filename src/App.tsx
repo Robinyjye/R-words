@@ -722,6 +722,8 @@ export default function App() {
       setIsTransitioning(false);
       setInput('');
       setIsViewingHistory(false);
+      setHasError(false);
+      setIsHinted(false);
     }, 500);
   }, [currentWord, words, isDictationMode, hasError, isHinted, filteredWords]);
 
