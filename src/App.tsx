@@ -1278,31 +1278,41 @@ export default function App() {
                   <ArrowRight size={24} />
                 </button>
                 {isDictationMode ? (
-                  <div className="flex flex-col items-center">
-                    {!isHinted ? (
-                      <div 
-                        className="flex justify-center items-center h-[72px] md:h-[96px] cursor-pointer text-emerald-500 hover:text-emerald-400 transition-colors"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setIsHinted(true);
+                  <div className="relative flex flex-col items-center justify-center h-[72px] md:h-[96px] w-full">
+                    <motion.div 
+                      animate={{ 
+                        y: isHinted ? -40 : 0,
+                        scale: isHinted ? 0.6 : 1,
+                        opacity: isHinted ? 0.5 : 1
+                      }}
+                      className="absolute flex justify-center items-center cursor-pointer text-emerald-500 hover:text-emerald-400 transition-colors z-10"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (!isHinted) {
+                          setHasError(true);
                           speakWord(currentWord.word);
-                        }}
-                        title="Click to reveal word & listen"
-                      >
-                        <Headphones size={64} />
-                      </div>
-                    ) : (
-                      <motion.h1 
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="text-4xl md:text-5xl font-medium tracking-tight text-white h-[72px] md:h-[96px] flex items-center justify-center"
-                      >
-                        {currentWord.word}
-                      </motion.h1>
-                    )}
+                        }
+                        setIsHinted(!isHinted);
+                      }}
+                      title={isHinted ? "Click to hide word" : "Click to reveal word & listen"}
+                    >
+                      <Headphones size={64} />
+                    </motion.div>
+                    
+                    <motion.h1 
+                      initial={false}
+                      animate={{ 
+                        opacity: isHinted ? 1 : 0, 
+                        scale: isHinted ? 1 : 0.9,
+                        y: isHinted ? 10 : 0
+                      }}
+                      className="absolute text-4xl md:text-5xl font-medium tracking-tight text-white flex items-center justify-center pointer-events-none"
+                    >
+                      {currentWord.word}
+                    </motion.h1>
                   </div>
                 ) : (
-                  <h1 className="text-7xl md:text-8xl font-medium tracking-tight text-white">
+                  <h1 className="text-5xl md:text-6xl font-medium tracking-tight text-white">
                     {currentWord.word}
                   </h1>
                 )}
@@ -1869,7 +1879,7 @@ export default function App() {
       </AnimatePresence>
 
       <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
-        Rev 2.1 Designed by robin.yj.ye@gmail.com in Mar 2026
+        Rev 2.2 Designed by robin.yj.ye@gmail.com in Mar 2026
       </div>
     </div>
   );
