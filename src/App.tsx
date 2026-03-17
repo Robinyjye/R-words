@@ -868,14 +868,14 @@ export default function App() {
 
     // Prepare data for export with Chinese headers
     const exportData = words.map(({ word, part_of_speech, phonetic, root, meaning, phrase, example_sentence, listName }) => ({
-      '单词': word,
-      '词性': part_of_speech,
-      '音标': phonetic,
-      '词根': root,
-      '释义': meaning,
-      '词组': phrase,
-      '例句': example_sentence,
-      '列表名称': listName
+      '单词': word || '',
+      '词性': part_of_speech || '',
+      '音标': phonetic || '',
+      '词根': root || '',
+      '释义': meaning || '',
+      '词组': phrase || '',
+      '例句': example_sentence || '',
+      '列表名称': listName || ''
     }));
 
     const csv = Papa.unparse(exportData);
@@ -907,6 +907,7 @@ export default function App() {
         existingWordsMap.set(w.word.toLowerCase(), { 
           ...existing, 
           ...w,
+          id: existing.id, // Preserve the original ID
           // Keep the existing progress if it was already practiced
           review_count: existing.review_count,
           last_review_time: existing.last_review_time,
@@ -921,13 +922,25 @@ export default function App() {
     setWords(mergedWords);
     saveWords(mergedWords);
     
+    if (currentWord) {
+      const updatedCurrent = existingWordsMap.get(currentWord.word.toLowerCase());
+      if (updatedCurrent) {
+        setCurrentWord(updatedCurrent);
+      }
+    }
+    
     if (importedWords.length > 0) {
       const newListName = importedWords[0].listName || 'Default List';
       setActiveList(newListName);
     }
     
     setShowImport(false);
-    showToast(`导入成功，新增了 ${newCount} 个单词。`);
+    const updatedCount = importedWords.length - newCount;
+    if (updatedCount > 0) {
+      showToast(`导入成功，新增了 ${newCount} 个单词，更新了 ${updatedCount} 个单词。`);
+    } else {
+      showToast(`导入成功，新增了 ${newCount} 个单词。`);
+    }
   };
 
   const handleRenameList = () => {
@@ -1841,7 +1854,7 @@ export default function App() {
       </AnimatePresence>
 
       <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
-        Rev 2.0 Designed by robin.yj.ye@gmail.com in Mar 2026
+        Rev 2.1 Designed by robin.yj.ye@gmail.com in Mar 2026
       </div>
     </div>
   );

@@ -139,36 +139,53 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
     try {
       const validWords: WordState[] = [];
       const wordsToEnrich: string[] = [];
-      const existingWordSet = new Set(existingWords.map(w => w.word.toLowerCase()));
+      const existingWordMap = new Map<string, WordState>(existingWords.map(w => [w.word.toLowerCase(), w]));
       let skippedCount = 0;
+      let updatedCount = 0;
       
       for (const item of data) {
         const wordStr = (item.word || item['单词'])?.toString().trim();
         if (wordStr) {
           const lowerWord = wordStr.toLowerCase();
-          if (existingWordSet.has(lowerWord)) {
-            skippedCount++;
-            continue;
+          const existingWord = existingWordMap.get(lowerWord);
+          
+          const importedMeaning = item['释义'] || item.meaning || '';
+          const importedPhrase = item['词组'] || item.phrase || '';
+          const importedExample = item['例句'] || item.example_sentence || '';
+          
+          if (existingWord) {
+            // Check if existing word has everything we need
+            const hasMeaning = existingWord.meaning || importedMeaning;
+            const hasPhrase = existingWord.phrase || importedPhrase;
+            const hasExample = existingWord.example_sentence || importedExample;
+            
+            // If it already has meaning, phrase, and example, we skip it
+            if (hasMeaning && hasPhrase && hasExample) {
+              skippedCount++;
+              continue;
+            }
+            updatedCount++;
           }
 
           const isMastered = item.is_mastered === true || item['已学会'] === true || false;
           const wordObj: WordState = {
-            id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15),
-            listName: isMastered ? 'Mastered Words' : (item['列表名称'] || item.listName || finalListName),
+            id: existingWord?.id || (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15)),
+            listName: isMastered ? 'Mastered Words' : (item['列表名称'] || item.listName || existingWord?.listName || finalListName),
             word: wordStr,
-            part_of_speech: item['词性'] || item.part_of_speech || '',
-            phonetic: item['音标'] || item.phonetic || '',
-            root: item['词根'] || item.root || '',
-            meaning: item['释义'] || item.meaning || '',
-            example_sentence: item['例句'] || item.example_sentence || '',
-            review_count: 0,
-            last_review_time: null,
-            is_completed_normal: false,
-            is_completed_dictation: false,
-            is_mastered: isMastered,
+            part_of_speech: item['词性'] || item.part_of_speech || existingWord?.part_of_speech || '',
+            phonetic: item['音标'] || item.phonetic || existingWord?.phonetic || '',
+            root: item['词根'] || item.root || existingWord?.root || '',
+            meaning: importedMeaning || existingWord?.meaning || '',
+            phrase: importedPhrase || existingWord?.phrase || '',
+            example_sentence: importedExample || existingWord?.example_sentence || '',
+            review_count: existingWord?.review_count || 0,
+            last_review_time: existingWord?.last_review_time || null,
+            is_completed_normal: existingWord?.is_completed_normal || false,
+            is_completed_dictation: existingWord?.is_completed_dictation || false,
+            is_mastered: isMastered || existingWord?.is_mastered || false,
           };
 
-          if (!wordObj.meaning || !wordObj.example_sentence) {
+          if (!wordObj.meaning || !wordObj.example_sentence || !wordObj.phrase) {
             wordsToEnrich.push(wordStr);
           }
           validWords.push(wordObj);
@@ -223,13 +240,14 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
 
         // Merge back
         for (const wordObj of validWords) {
-          if (!wordObj.meaning || !wordObj.example_sentence) {
+          if (!wordObj.meaning || !wordObj.example_sentence || !wordObj.phrase) {
             const enriched = enrichedDataMap.get(wordObj.word.toLowerCase());
             if (enriched) {
               wordObj.part_of_speech = enriched.part_of_speech || wordObj.part_of_speech;
               wordObj.phonetic = enriched.phonetic || wordObj.phonetic;
               wordObj.root = enriched.root || wordObj.root;
               wordObj.meaning = enriched.meaning || wordObj.meaning;
+              wordObj.phrase = enriched.phrase || wordObj.phrase;
               wordObj.example_sentence = enriched.example_sentence || wordObj.example_sentence;
             }
           }
