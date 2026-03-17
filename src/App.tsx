@@ -589,13 +589,15 @@ export default function App() {
         return;
       }
 
-      // Handle Space to read example sentence
+      // Handle Space to read phrase
       if (e.key === ' ') {
         const targetWord = currentWord.word;
         // If the next character to type is NOT a space, trigger speech
         if (targetWord[input.length] !== ' ') {
           e.preventDefault();
-          if (currentWord.example_sentence) {
+          if (currentWord.phrase) {
+            speakWord(currentWord.phrase);
+          } else if (currentWord.example_sentence) {
             speakWord(currentWord.example_sentence);
           } else {
             speakWord(currentWord.word);
@@ -1383,7 +1385,7 @@ export default function App() {
                         speakWord(currentWord.phrase!);
                       }}
                       className="p-1 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
-                      title="Listen to phrase (ArrowUp)"
+                      title="Listen to phrase (Space / ArrowUp)"
                       tabIndex={-1}
                     >
                       <Volume2 size={14} />
