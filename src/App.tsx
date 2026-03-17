@@ -606,8 +606,19 @@ export default function App() {
         }
       }
 
-      // Handle Shift to read word
+      // Handle Shift to read example sentence
       if (e.key === 'Shift') {
+        e.preventDefault();
+        if (currentWord.example_sentence) {
+          speakWord(currentWord.example_sentence);
+        } else {
+          speakWord(currentWord.word);
+        }
+        return;
+      }
+
+      // Handle PageDown to read word
+      if (e.key === 'PageDown') {
         e.preventDefault();
         speakWord(currentWord.word);
         return;
@@ -1356,7 +1367,7 @@ export default function App() {
                       speakWord(currentWord.word);
                     }}
                     className="p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
-                    title="Listen to pronunciation (Shift)"
+                    title="Listen to pronunciation (PageDown)"
                     tabIndex={-1}
                   >
                     <Volume2 size={16} />
@@ -1405,7 +1416,7 @@ export default function App() {
                         speakWord(currentWord.example_sentence!);
                       }}
                       className="mt-0.5 p-1 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none flex-shrink-0"
-                      title="Listen to example sentence (ArrowDown)"
+                      title="Listen to example sentence (Shift / ArrowDown)"
                       tabIndex={-1}
                     >
                       <Volume2 size={14} />
