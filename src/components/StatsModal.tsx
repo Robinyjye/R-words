@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
@@ -19,7 +19,20 @@ interface StatsModalProps {
 }
 
 export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
+  const heatmapContainerRef = useRef<HTMLDivElement>(null);
   const today = new Date();
+
+  useEffect(() => {
+    if (isOpen && heatmapContainerRef.current) {
+      // Use a small timeout to ensure the layout is finished and the container is rendered
+      const timer = setTimeout(() => {
+        if (heatmapContainerRef.current) {
+          heatmapContainerRef.current.scrollLeft = heatmapContainerRef.current.scrollWidth;
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
   const todayStr = today.toISOString().split('T')[0];
   const todayStats = stats.daily[todayStr] || { count: 0 };
 
@@ -115,7 +128,7 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
                 </div>
                 <div>
                   <h2 className="text-2xl font-bold text-white tracking-tight">学习概览</h2>
-                  <p className="text-xs text-zinc-500 font-medium uppercase tracking-widest mt-0.5">Statistics & Activity</p>
+                  <p className="text-xs text-zinc-400 font-medium uppercase tracking-widest mt-0.5">Statistics & Activity</p>
                 </div>
               </div>
               <button
@@ -139,7 +152,7 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
                     <div className={`text-3xl font-mono font-bold ${stat.color} tracking-tighter`}>
                       {stat.value}
                     </div>
-                    <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-500">{stat.label}</div>
+                    <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-400">{stat.label}</div>
                   </div>
                 ))}
               </div>
@@ -147,8 +160,8 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
               {/* Bar Chart Section */}
               <div className="space-y-6">
                 <div className="flex items-center justify-between px-2">
-                  <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest">最近 30 天趋势</h3>
-                  <div className="text-xs text-zinc-600 font-mono">Daily Word Count</div>
+                  <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-widest">最近 30 天趋势</h3>
+                  <div className="text-xs text-zinc-400 font-mono">Daily Word Count</div>
                 </div>
                 <div className="h-48 w-full">
                   <ResponsiveContainer width="100%" height="100%">
@@ -157,13 +170,13 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
                         dataKey="displayDate" 
                         axisLine={false} 
                         tickLine={false} 
-                        tick={{ fill: '#3f3f46', fontSize: 10 }}
+                        tick={{ fill: '#d4d4d8', fontSize: 10 }}
                         interval={4}
                       />
                       <YAxis 
                         axisLine={false} 
                         tickLine={false} 
-                        tick={{ fill: '#3f3f46', fontSize: 10 }}
+                        tick={{ fill: '#d4d4d8', fontSize: 10 }}
                         orientation="right"
                       />
                       <Tooltip 
@@ -188,11 +201,11 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
               {/* Heatmap Section */}
               <div className="space-y-6">
                 <div className="flex items-center justify-between px-2">
-                  <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest">
+                  <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-widest">
                     最近一年记录 <span className="text-emerald-500 ml-2">{stats.totalCount} 单词</span>
                   </h3>
                   <div className="flex items-center space-x-2">
-                    <span className="text-[10px] text-zinc-600">Less</span>
+                    <span className="text-[10px] text-zinc-300">Less</span>
                     <div className="flex space-x-1">
                       <div className="w-2.5 h-2.5 rounded-sm bg-zinc-800/40" />
                       <div className="w-2.5 h-2.5 rounded-sm bg-emerald-900/30" />
@@ -200,11 +213,14 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
                       <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500/70" />
                       <div className="w-2.5 h-2.5 rounded-sm bg-emerald-400" />
                     </div>
-                    <span className="text-[10px] text-zinc-600">More</span>
+                    <span className="text-[10px] text-zinc-300">More</span>
                   </div>
                 </div>
                 
-                <div className="relative bg-zinc-900/20 border border-zinc-900/50 p-6 rounded-3xl overflow-x-auto">
+                <div 
+                  ref={heatmapContainerRef}
+                  className="relative bg-zinc-900/20 border border-zinc-900/50 p-6 rounded-3xl overflow-x-auto"
+                >
                   <div className="flex">
                     {/* Heatmap Grid */}
                     <div className="flex-1">
@@ -218,7 +234,7 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
                             initial={{ opacity: 0, scale: 0.8 }}
                             animate={{ opacity: 1, scale: 1 }}
                             transition={{ delay: i * 0.001 }}
-                            className={`w-3 h-3 rounded-[3px] ${getIntensity(d.count)} transition-all duration-500 hover:ring-2 hover:ring-emerald-500/50 cursor-help`}
+                            className={`w-3 h-3 rounded-[3px] ${getIntensity(d.count)} transition-all duration-500 hover:ring-2 hover:ring-emerald-500/50`}
                             title={`${d.date}: ${d.count} words`}
                           />
                         ))}
@@ -229,7 +245,7 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
                         {monthLabels.map((m, i) => (
                           <div 
                             key={i}
-                            className="absolute text-[10px] font-bold text-zinc-600 whitespace-nowrap"
+                            className="absolute text-[10px] font-bold text-zinc-300 whitespace-nowrap"
                             style={{ left: `${(m.index * 18.5)}px` }}
                           >
                             {m.label}
@@ -239,14 +255,17 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
                     </div>
 
                     {/* Day Labels (Right side like image) */}
-                    <div className="flex flex-col justify-between py-0.5 ml-4 text-[10px] font-bold text-zinc-700">
-                      <span>日</span>
-                      <span></span>
-                      <span>二</span>
-                      <span></span>
-                      <span>四</span>
-                      <span></span>
-                      <span>六</span>
+                    <div 
+                      className="grid gap-1.5 ml-4 text-[8px] font-bold text-zinc-300"
+                      style={{ gridTemplateRows: 'repeat(7, 12px)' }}
+                    >
+                      <span className="flex items-center h-3">日</span>
+                      <span className="flex items-center h-3">一</span>
+                      <span className="flex items-center h-3">二</span>
+                      <span className="flex items-center h-3">三</span>
+                      <span className="flex items-center h-3">四</span>
+                      <span className="flex items-center h-3">五</span>
+                      <span className="flex items-center h-3">六</span>
                     </div>
                   </div>
                 </div>
@@ -255,7 +274,7 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
 
             {/* Footer */}
             <div className="p-8 bg-zinc-900/20 text-center border-t border-zinc-900">
-              <p className="text-xs text-zinc-600 italic font-serif">
+              <p className="text-xs text-zinc-400 italic font-serif">
                 "Small steps every day lead to big results over time."
               </p>
             </div>
