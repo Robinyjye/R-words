@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Clock, BookOpen, Calendar, TrendingUp } from 'lucide-react';
+import { X, TrendingUp } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
 
 interface DailyStat {
   count: number; // words
@@ -18,117 +19,244 @@ interface StatsModalProps {
 }
 
 export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
-  const today = new Date().toISOString().split('T')[0];
-  const todayStats = stats.daily[today] || { count: 0 };
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const todayStats = stats.daily[todayStr] || { count: 0 };
 
-  // Generate last 60 days for the heatmap
-  const heatmapDays = Array.from({ length: 70 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (69 - i));
-    return d.toISOString().split('T')[0];
-  });
+  // Prepare data for the bar chart (last 30 days)
+  const barChartData = useMemo(() => {
+    return Array.from({ length: 30 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (29 - i));
+      const dateStr = d.toISOString().split('T')[0];
+      return {
+        date: dateStr,
+        displayDate: d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }),
+        count: stats.daily[dateStr]?.count || 0,
+      };
+    });
+  }, [stats.daily]);
+
+  // Prepare data for the heatmap (last 365 days)
+  const heatmapData = useMemo(() => {
+    const data = [];
+    const end = new Date();
+    // Adjust to end on the last Saturday to make the grid look nice
+    const dayOfWeek = end.getDay();
+    end.setDate(end.getDate() + (6 - dayOfWeek));
+
+    const start = new Date(end);
+    start.setDate(start.getDate() - (52 * 7) + 1);
+
+    const current = new Date(start);
+    while (current <= end) {
+      const dateStr = current.toISOString().split('T')[0];
+      data.push({
+        date: dateStr,
+        count: stats.daily[dateStr]?.count || 0,
+        dayOfWeek: current.getDay(),
+        month: current.getMonth(),
+      });
+      current.setDate(current.getDate() + 1);
+    }
+    return data;
+  }, [stats.daily]);
 
   const getIntensity = (count: number) => {
-    if (count === 0) return 'bg-zinc-800/50';
-    if (count < 5) return 'bg-emerald-900/40';
-    if (count < 15) return 'bg-emerald-700/60';
-    if (count < 30) return 'bg-emerald-500/80';
+    if (count === 0) return 'bg-zinc-800/40';
+    if (count < 5) return 'bg-emerald-900/30';
+    if (count < 15) return 'bg-emerald-700/50';
+    if (count < 30) return 'bg-emerald-500/70';
     return 'bg-emerald-400';
   };
+
+  const monthLabels = useMemo(() => {
+    const labels: { label: string; index: number }[] = [];
+    let lastMonth = -1;
+    heatmapData.forEach((d, i) => {
+      if (d.dayOfWeek === 0) { // Only check at the start of a week
+        const date = new Date(d.date);
+        const month = date.getMonth();
+        if (month !== lastMonth) {
+          labels.push({
+            label: date.toLocaleDateString('zh-CN', { month: 'short' }),
+            index: Math.floor(i / 7),
+          });
+          lastMonth = month;
+        }
+      }
+    });
+    return labels;
+  }, [heatmapData]);
 
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/90 backdrop-blur-md"
           />
           
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl"
+            className="relative w-full max-w-4xl bg-zinc-950 border border-zinc-900 rounded-[2rem] overflow-hidden shadow-2xl my-auto"
           >
             {/* Header */}
-            <div className="flex items-center justify-between p-6 border-bottom border-zinc-800">
-              <div className="flex items-center space-x-3">
-                <div className="p-2 bg-emerald-500/10 rounded-lg">
-                  <TrendingUp className="text-white" size={20} />
+            <div className="flex items-center justify-between p-8 border-b border-zinc-900">
+              <div className="flex items-center space-x-4">
+                <div className="p-3 bg-emerald-500/10 rounded-2xl">
+                  <TrendingUp className="text-emerald-500" size={24} />
                 </div>
-                <h2 className="text-xl font-bold text-white tracking-tight">练习统计</h2>
+                <div>
+                  <h2 className="text-2xl font-bold text-white tracking-tight">学习概览</h2>
+                  <p className="text-xs text-zinc-500 font-medium uppercase tracking-widest mt-0.5">Statistics & Activity</p>
+                </div>
               </div>
               <button
                 onClick={onClose}
-                className="p-2 hover:bg-zinc-900 rounded-full text-zinc-400 hover:text-white transition-colors"
+                className="p-3 hover:bg-zinc-900 rounded-2xl text-zinc-500 hover:text-white transition-all duration-300"
               >
-                <X size={20} />
+                <X size={24} />
               </button>
             </div>
 
-            <div className="p-8 space-y-10">
+            <div className="p-8 space-y-12">
               {/* Top Stats Grid */}
-              <div className="grid grid-cols-2 gap-8">
-                <div className="space-y-1">
-                  <div className="text-3xl font-mono font-bold text-white tracking-tighter">
-                    {todayStats.count}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+                {[
+                  { label: '今日单词', value: todayStats.count, color: 'text-emerald-400' },
+                  { label: '累计单词', value: stats.totalCount, color: 'text-white' },
+                  { label: '练习天数', value: Object.values(stats.daily).filter(d => d.count > 0).length, color: 'text-white' },
+                  { label: '单日最高', value: Math.max(...Object.values(stats.daily).map(d => d.count), 0), color: 'text-white' },
+                ].map((stat, i) => (
+                  <div key={i} className="bg-zinc-900/40 border border-zinc-800/50 p-6 rounded-3xl space-y-1">
+                    <div className={`text-3xl font-mono font-bold ${stat.color} tracking-tighter`}>
+                      {stat.value}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-500">{stat.label}</div>
                   </div>
-                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-500">今日单词</div>
+                ))}
+              </div>
+
+              {/* Bar Chart Section */}
+              <div className="space-y-6">
+                <div className="flex items-center justify-between px-2">
+                  <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest">最近 30 天趋势</h3>
+                  <div className="text-xs text-zinc-600 font-mono">Daily Word Count</div>
                 </div>
-                <div className="space-y-1">
-                  <div className="text-3xl font-mono font-bold text-white tracking-tighter">
-                    {stats.totalCount}
-                  </div>
-                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-500">累计单词</div>
+                <div className="h-48 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={barChartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                      <XAxis 
+                        dataKey="displayDate" 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: '#3f3f46', fontSize: 10 }}
+                        interval={4}
+                      />
+                      <YAxis 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: '#3f3f46', fontSize: 10 }}
+                        orientation="right"
+                      />
+                      <Tooltip 
+                        cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+                        contentStyle={{ backgroundColor: '#09090b', border: '1px solid #18181b', borderRadius: '12px', fontSize: '12px' }}
+                        itemStyle={{ color: '#10b981' }}
+                      />
+                      <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                        {barChartData.map((entry, index) => (
+                          <Cell 
+                            key={`cell-${index}`} 
+                            fill={entry.count > 0 ? '#10b981' : '#18181b'} 
+                            fillOpacity={entry.count > 0 ? 0.8 : 0.3}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
 
               {/* Heatmap Section */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-500">练习活跃度</div>
-                  <div className="flex items-center space-x-1">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between px-2">
+                  <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest">
+                    最近一年记录 <span className="text-emerald-500 ml-2">{stats.totalCount} 单词</span>
+                  </h3>
+                  <div className="flex items-center space-x-2">
                     <span className="text-[10px] text-zinc-600">Less</span>
-                    <div className="w-2 h-2 rounded-sm bg-zinc-800/50" />
-                    <div className="w-2 h-2 rounded-sm bg-emerald-900/40" />
-                    <div className="w-2 h-2 rounded-sm bg-emerald-700/60" />
-                    <div className="w-2 h-2 rounded-sm bg-emerald-500/80" />
-                    <div className="w-2 h-2 rounded-sm bg-emerald-400" />
+                    <div className="flex space-x-1">
+                      <div className="w-2.5 h-2.5 rounded-sm bg-zinc-800/40" />
+                      <div className="w-2.5 h-2.5 rounded-sm bg-emerald-900/30" />
+                      <div className="w-2.5 h-2.5 rounded-sm bg-emerald-700/50" />
+                      <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500/70" />
+                      <div className="w-2.5 h-2.5 rounded-sm bg-emerald-400" />
+                    </div>
                     <span className="text-[10px] text-zinc-600">More</span>
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-10 gap-2">
-                  {heatmapDays.map((date) => {
-                    const dayStat = stats.daily[date] || { count: 0 };
-                    return (
-                      <motion.div
-                        key={date}
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className={`aspect-square rounded-md ${getIntensity(dayStat.count)} transition-colors duration-500`}
-                        title={`${date}: ${dayStat.count} words`}
-                      />
-                    );
-                  })}
-                </div>
-                
-                <div className="flex justify-between text-[10px] font-medium text-zinc-600 px-1">
-                  <span>{new Date(heatmapDays[0]).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}</span>
-                  <span>{new Date(heatmapDays[35]).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}</span>
-                  <span>今天</span>
+                <div className="relative bg-zinc-900/20 border border-zinc-900/50 p-6 rounded-3xl overflow-x-auto">
+                  <div className="flex">
+                    {/* Heatmap Grid */}
+                    <div className="flex-1">
+                      <div 
+                        className="grid grid-flow-col gap-1.5"
+                        style={{ gridTemplateRows: 'repeat(7, minmax(0, 1fr))' }}
+                      >
+                        {heatmapData.map((d, i) => (
+                          <motion.div
+                            key={d.date}
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: i * 0.001 }}
+                            className={`w-3 h-3 rounded-[3px] ${getIntensity(d.count)} transition-all duration-500 hover:ring-2 hover:ring-emerald-500/50 cursor-help`}
+                            title={`${d.date}: ${d.count} words`}
+                          />
+                        ))}
+                      </div>
+                      
+                      {/* Month Labels */}
+                      <div className="relative h-6 mt-4">
+                        {monthLabels.map((m, i) => (
+                          <div 
+                            key={i}
+                            className="absolute text-[10px] font-bold text-zinc-600 whitespace-nowrap"
+                            style={{ left: `${(m.index * 18.5)}px` }}
+                          >
+                            {m.label}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Day Labels (Right side like image) */}
+                    <div className="flex flex-col justify-between py-0.5 ml-4 text-[10px] font-bold text-zinc-700">
+                      <span>日</span>
+                      <span></span>
+                      <span>二</span>
+                      <span></span>
+                      <span>四</span>
+                      <span></span>
+                      <span>六</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Footer */}
-            <div className="p-6 bg-zinc-900/30 text-center">
-              <p className="text-xs text-zinc-500 italic font-serif">
-                "Consistency is the key to mastery."
+            <div className="p-8 bg-zinc-900/20 text-center border-t border-zinc-900">
+              <p className="text-xs text-zinc-600 italic font-serif">
+                "Small steps every day lead to big results over time."
               </p>
             </div>
           </motion.div>

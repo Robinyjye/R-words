@@ -1280,7 +1280,11 @@ export default function App() {
                   <ArrowRight size={24} />
                 </button>
                 {isDictationMode ? (
-                  <div className="relative flex flex-col items-center justify-center h-[72px] md:h-[96px] w-full">
+                  <div className="relative flex flex-col items-center justify-center h-[72px] md:h-[96px] w-full px-8">
+                    {/* Ghost word to ensure container width matches word width, preventing arrow overlap */}
+                    <h1 className="text-4xl md:text-5xl font-medium tracking-tight opacity-0 pointer-events-none select-none whitespace-nowrap">
+                      {currentWord.word}
+                    </h1>
                     <motion.div 
                       animate={{ 
                         y: isHinted ? -40 : 0,
@@ -1308,7 +1312,7 @@ export default function App() {
                         scale: isHinted ? 1 : 0.9,
                         y: isHinted ? 10 : 0
                       }}
-                      className="absolute text-4xl md:text-5xl font-medium tracking-tight text-white flex items-center justify-center pointer-events-none"
+                      className="absolute text-4xl md:text-5xl font-medium tracking-tight text-white flex items-center justify-center pointer-events-none whitespace-nowrap"
                     >
                       {currentWord.word}
                     </motion.h1>
@@ -1881,7 +1885,7 @@ export default function App() {
       </AnimatePresence>
 
       <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
-        Rev 2.2 Designed by robin.yj.ye@gmail.com in Mar 2026
+        Rev 2.3 Designed by robin.yj.ye@gmail.com in Mar 2026
       </div>
     </div>
   );
