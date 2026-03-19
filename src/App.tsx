@@ -138,6 +138,12 @@ export default function App() {
     }));
   }, [words, isDictationMode]);
 
+  const activeListLabel = useMemo(() => {
+    const list = lists.find(l => l.name === activeList);
+    if (!list) return activeList;
+    return `${list.name === 'Mastered Words' ? '✅ ' : (list.isDue ? '🟡 ' : '')}${list.name}`;
+  }, [lists, activeList]);
+
   const filteredWords = useMemo(() => {
     return words.filter(w => (w.listName || 'Default List') === activeList);
   }, [words, activeList]);
@@ -191,6 +197,12 @@ export default function App() {
           meaning: details.meaning || '', 
           part_of_speech: details.part_of_speech || '',
           phonetic: details.phonetic || '',
+          prefix: details.prefix || '',
+          prefix_meaning: details.prefix_meaning || '',
+          root_core: details.root_core || '',
+          root_meaning: details.root_meaning || '',
+          suffix: details.suffix || '',
+          suffix_meaning: details.suffix_meaning || '',
           root: details.root || '',
           phrase: details.phrase || '',
           example_sentence: details.example_sentence || '',
@@ -219,6 +231,12 @@ export default function App() {
           word: normalizedTerm,
           meaning: '', 
           part_of_speech: '',
+          prefix: '',
+          prefix_meaning: '',
+          root_core: '',
+          root_meaning: '',
+          suffix: '',
+          suffix_meaning: '',
           root: '',
           phrase: '',
           example_sentence: '',
@@ -882,11 +900,17 @@ export default function App() {
     }
 
     // Prepare data for export with Chinese headers
-    const exportData = words.map(({ word, part_of_speech, phonetic, root, meaning, phrase, example_sentence, listName }) => ({
+    const exportData = words.map(({ word, part_of_speech, phonetic, prefix, prefix_meaning, root_core, root_meaning, suffix, suffix_meaning, root, meaning, phrase, example_sentence, listName }) => ({
       '单词': word || '',
       '词性': part_of_speech || '',
       '音标': phonetic || '',
-      '词根': root || '',
+      '前缀': prefix || '',
+      '前缀含义': prefix_meaning || '',
+      '词根核心': root_core || '',
+      '词根含义': root_meaning || '',
+      '后缀': suffix || '',
+      '后缀含义': suffix_meaning || '',
+      '词根简述': root || '',
       '释义': meaning || '',
       '词组': phrase || '',
       '例句': example_sentence || '',
@@ -1084,14 +1108,17 @@ export default function App() {
             {/* List Selector */}
             {words.length > 0 && (
               <div className="flex items-center space-x-2">
-                <div className="relative">
+                <div className="relative inline-grid items-center">
+                  <span className="invisible px-3 pr-8 py-1.5 text-sm whitespace-pre col-start-1 row-start-1">
+                    {activeListLabel}
+                  </span>
                   <select 
                     value={activeList}
                     onChange={(e) => {
                       setActiveList(e.target.value);
                       (e.target as HTMLSelectElement).blur();
                     }}
-                    className="appearance-none bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-lg pl-3 pr-8 py-1.5 focus:outline-none focus:border-emerald-500/50 cursor-pointer"
+                    className="col-start-1 row-start-1 w-full h-full appearance-none bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-lg pl-3 pr-8 py-1.5 focus:outline-none focus:border-emerald-500/50 cursor-pointer"
                   >
                     {lists.map(list => (
                       <option key={list.name} value={list.name}>
@@ -1394,8 +1421,22 @@ export default function App() {
                     {currentWord.meaning}
                   </p>
                 )}
-                {currentWord.root && (
-                  <p className="text-sm text-zinc-500 font-mono">
+                {(currentWord.prefix || currentWord.root_core || currentWord.suffix) ? (
+                  <div className="mt-4 font-mono text-zinc-400 text-sm flex flex-wrap justify-center items-center gap-1">
+                    {currentWord.prefix && (
+                      <span>{currentWord.prefix} {currentWord.prefix_meaning && `(${currentWord.prefix_meaning})`}</span>
+                    )}
+                    {currentWord.prefix && (currentWord.root_core || currentWord.suffix) && <span> + </span>}
+                    {currentWord.root_core && (
+                      <span>{currentWord.root_core} {currentWord.root_meaning && `(${currentWord.root_meaning})`}</span>
+                    )}
+                    {currentWord.root_core && currentWord.suffix && <span> + </span>}
+                    {currentWord.suffix && (
+                      <span>{currentWord.suffix} {currentWord.suffix_meaning && `(${currentWord.suffix_meaning})`}</span>
+                    )}
+                  </div>
+                ) : currentWord.root && (
+                  <p className="text-sm text-zinc-500 font-mono mt-1">
                     {currentWord.root}
                   </p>
                 )}
@@ -1675,6 +1716,69 @@ export default function App() {
                     <label htmlFor="edit-mastered" className="text-sm font-medium text-zinc-300 cursor-pointer">已学会</label>
                   </div>
                 </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">前缀</label>
+                    <input
+                      type="text"
+                      value={editingWordData.prefix || ''}
+                      onChange={(e) => setEditingWordData({ ...editingWordData, prefix: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50"
+                      placeholder="pre-"
+                    />
+                    <input
+                      type="text"
+                      value={editingWordData.prefix_meaning || ''}
+                      onChange={(e) => setEditingWordData({ ...editingWordData, prefix_meaning: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 mt-1 text-xs text-zinc-400 focus:outline-none focus:border-emerald-500/50"
+                      placeholder="前缀含义"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">词根</label>
+                    <input
+                      type="text"
+                      value={editingWordData.root_core || ''}
+                      onChange={(e) => setEditingWordData({ ...editingWordData, root_core: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50"
+                      placeholder="dict"
+                    />
+                    <input
+                      type="text"
+                      value={editingWordData.root_meaning || ''}
+                      onChange={(e) => setEditingWordData({ ...editingWordData, root_meaning: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 mt-1 text-xs text-zinc-400 focus:outline-none focus:border-emerald-500/50"
+                      placeholder="词根含义"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">后缀</label>
+                    <input
+                      type="text"
+                      value={editingWordData.suffix || ''}
+                      onChange={(e) => setEditingWordData({ ...editingWordData, suffix: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50"
+                      placeholder="-ion"
+                    />
+                    <input
+                      type="text"
+                      value={editingWordData.suffix_meaning || ''}
+                      onChange={(e) => setEditingWordData({ ...editingWordData, suffix_meaning: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 mt-1 text-xs text-zinc-400 focus:outline-none focus:border-emerald-500/50"
+                      placeholder="后缀含义"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">词根简述</label>
+                  <input
+                    type="text"
+                    value={editingWordData.root || ''}
+                    onChange={(e) => setEditingWordData({ ...editingWordData, root: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50"
+                    placeholder="Summary of breakdown"
+                  />
+                </div>
                 <div>
                   <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">词组</label>
                   <input
@@ -1885,7 +1989,7 @@ export default function App() {
       </AnimatePresence>
 
       <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
-        Rev 2.5 Designed by robin.yj.ye@gmail.com in Mar 2026
+        Rev 2.7 Designed by robin.yj.ye@gmail.com in Mar 2026
       </div>
     </div>
   );

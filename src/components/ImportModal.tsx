@@ -18,6 +18,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
   const [listName, setListName] = useState('');
   const [isEnriching, setIsEnriching] = useState(false);
   const [enrichProgress, setEnrichProgress] = useState<{ current: number; total: number } | null>(null);
+  const [shouldOverwrite, setShouldOverwrite] = useState(false);
+  const [forceEnrich, setForceEnrich] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -32,11 +34,6 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
       const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
       setListName(nameWithoutExt);
       currentListName = nameWithoutExt;
-    }
-
-    if (!currentListName) {
-      setError('Please enter a list name first.');
-      return;
     }
 
     if (file.name.endsWith('.json')) {
@@ -99,11 +96,6 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
   };
 
   const handlePasteSubmit = () => {
-    if (!listName.trim()) {
-      setError('Please enter a list name first.');
-      return;
-    }
-
     if (!pasteContent.trim()) {
       setError('Please paste some content first.');
       return;
@@ -146,12 +138,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
     setIsEnriching(true);
     setError(null);
     
-    const finalListName = listName.trim();
-    if (!finalListName) {
-      setError('List name is required.');
-      setIsEnriching(false);
-      return;
-    }
+    const finalListName = listName.trim() || 'Default List';
     
     try {
       const validWords: WordState[] = [];
@@ -170,17 +157,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
           const importedPhrase = item['词组'] || item.phrase || '';
           const importedExample = item['例句'] || item.example_sentence || '';
           
-          if (existingWord) {
-            // Check if existing word has everything we need
-            const hasMeaning = existingWord.meaning || importedMeaning;
-            const hasPhrase = existingWord.phrase || importedPhrase;
-            const hasExample = existingWord.example_sentence || importedExample;
-            
-            // If it already has meaning, phrase, and example, we skip it
-            if (hasMeaning && hasPhrase && hasExample) {
-              skippedCount++;
-              continue;
-            }
+          if (existingWord && !shouldOverwrite) {
+            skippedCount++;
+            continue;
+          }
+
+          if (existingWord && shouldOverwrite) {
             updatedCount++;
           }
 
@@ -189,12 +171,18 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
             id: existingWord?.id || (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15)),
             listName: isMastered ? 'Mastered Words' : (item['列表名称'] || item.listName || existingWord?.listName || finalListName),
             word: wordStr,
-            part_of_speech: item['词性'] || item.part_of_speech || existingWord?.part_of_speech || '',
-            phonetic: item['音标'] || item.phonetic || existingWord?.phonetic || '',
-            root: item['词根'] || item.root || existingWord?.root || '',
-            meaning: importedMeaning || existingWord?.meaning || '',
-            phrase: importedPhrase || existingWord?.phrase || '',
-            example_sentence: importedExample || existingWord?.example_sentence || '',
+            part_of_speech: forceEnrich ? '' : (item['词性'] || item.part_of_speech || existingWord?.part_of_speech || ''),
+            phonetic: forceEnrich ? '' : (item['音标'] || item.phonetic || existingWord?.phonetic || ''),
+            root: forceEnrich ? '' : (item['词根'] || item.root || existingWord?.root || ''),
+            prefix: forceEnrich ? '' : (item['前缀'] || item.prefix || existingWord?.prefix || ''),
+            prefix_meaning: forceEnrich ? '' : (item['前缀含义'] || item.prefix_meaning || existingWord?.prefix_meaning || ''),
+            root_core: forceEnrich ? '' : (item['词根核心'] || item.root_core || existingWord?.root_core || ''),
+            root_meaning: forceEnrich ? '' : (item['词根含义'] || item.root_meaning || existingWord?.root_meaning || ''),
+            suffix: forceEnrich ? '' : (item['后缀'] || item.suffix || existingWord?.suffix || ''),
+            suffix_meaning: forceEnrich ? '' : (item['后缀含义'] || item.suffix_meaning || existingWord?.suffix_meaning || ''),
+            meaning: forceEnrich ? '' : (importedMeaning || existingWord?.meaning || ''),
+            phrase: forceEnrich ? '' : (importedPhrase || existingWord?.phrase || ''),
+            example_sentence: forceEnrich ? '' : (importedExample || existingWord?.example_sentence || ''),
             review_count: existingWord?.review_count || 0,
             last_review_time: existingWord?.last_review_time || null,
             is_completed_normal: existingWord?.is_completed_normal || false,
@@ -202,7 +190,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
             is_mastered: isMastered || existingWord?.is_mastered || false,
           };
 
-          if (!wordObj.meaning || !wordObj.example_sentence || !wordObj.phrase) {
+          if (forceEnrich || !wordObj.meaning || !wordObj.example_sentence || !wordObj.phrase) {
             wordsToEnrich.push(wordStr);
           }
           validWords.push(wordObj);
@@ -262,6 +250,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
             if (enriched) {
               wordObj.part_of_speech = enriched.part_of_speech || wordObj.part_of_speech;
               wordObj.phonetic = enriched.phonetic || wordObj.phonetic;
+              wordObj.prefix = enriched.prefix || wordObj.prefix;
+              wordObj.prefix_meaning = enriched.prefix_meaning || wordObj.prefix_meaning;
+              wordObj.root_core = enriched.root_core || wordObj.root_core;
+              wordObj.root_meaning = enriched.root_meaning || wordObj.root_meaning;
+              wordObj.suffix = enriched.suffix || wordObj.suffix;
+              wordObj.suffix_meaning = enriched.suffix_meaning || wordObj.suffix_meaning;
               wordObj.root = enriched.root || wordObj.root;
               wordObj.meaning = enriched.meaning || wordObj.meaning;
               wordObj.phrase = enriched.phrase || wordObj.phrase;
@@ -299,17 +293,41 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
 
         <div className="mb-6">
           <label className="block text-sm font-medium text-zinc-400 mb-2">
-            List Name <span className="text-rose-500">*</span>
+            List Name <span className="text-zinc-600 text-xs font-normal ml-1">(Optional)</span>
           </label>
           <input 
             type="text" 
             value={listName}
             onChange={(e) => setListName(e.target.value)}
             disabled={isEnriching}
-            required
             placeholder="e.g., TOEFL Core, Chapter 1..."
-            className={`w-full bg-zinc-950 border rounded-xl p-3 text-sm text-zinc-300 focus:outline-none focus:ring-1 disabled:opacity-50 ${error && !listName.trim() ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/50' : 'border-zinc-800 focus:border-emerald-500/50 focus:ring-emerald-500/50'}`}
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-300 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50"
           />
+        </div>
+
+        <div className="flex flex-col space-y-3 mb-6">
+          <div className="flex items-center space-x-2">
+            <input 
+              type="checkbox" 
+              id="overwrite" 
+              checked={shouldOverwrite}
+              onChange={(e) => setShouldOverwrite(e.target.checked)}
+              disabled={isEnriching}
+              className="w-4 h-4 rounded border-zinc-800 bg-zinc-950 text-emerald-500 focus:ring-emerald-500/50"
+            />
+            <label htmlFor="overwrite" className="text-sm text-zinc-300 cursor-pointer">覆盖 (更新现有单词)</label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <input 
+              type="checkbox" 
+              id="force-enrich" 
+              checked={forceEnrich}
+              onChange={(e) => setForceEnrich(e.target.checked)}
+              disabled={isEnriching}
+              className="w-4 h-4 rounded border-zinc-800 bg-zinc-950 text-emerald-500 focus:ring-emerald-500/50"
+            />
+            <label htmlFor="force-enrich" className="text-sm text-zinc-300 cursor-pointer">强制 AI 增强 (重新解析所有字段)</label>
+          </div>
         </div>
 
         <div className="flex space-x-2 mb-6 bg-zinc-950 p-1 rounded-xl border border-zinc-800">

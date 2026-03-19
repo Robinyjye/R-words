@@ -17,7 +17,18 @@ function getAI() {
 export async function enrichWords(words: string[]): Promise<Record<string, any>[]> {
   if (!words.length) return [];
   
-  const prompt = `Please provide the part of speech, phonetic transcription (IPA), root/affix analysis, Chinese meaning, a common phrase using the word, and an English example sentence for the following English words:\n${words.join(', ')}`;
+  const prompt = `Please provide an authoritative etymological analysis for the following English words: ${words.join(', ')}.
+For each word, break it down into its prefix, root (core), and suffix.
+Also include the part of speech, phonetic transcription (IPA), Chinese meaning, a common phrase, and an English example sentence.
+
+Important:
+- prefix: The prefix part (e.g., 'pre-', 'un-'). Leave empty if none.
+- prefix_meaning: The Chinese meaning of the prefix (e.g., '在...之前').
+- root_core: The core root of the word (e.g., 'dict' in 'predict').
+- root_meaning: The Chinese meaning of the root (e.g., '说').
+- suffix: The suffix part (e.g., '-ion', '-ly'). Leave empty if none.
+- suffix_meaning: The Chinese meaning of the suffix (e.g., '名词后缀').
+- root: A concise summary of the breakdown (e.g., 'pre- (before) + dict (to say)').`;
   
   try {
     const aiInstance = getAI();
@@ -36,13 +47,19 @@ export async function enrichWords(words: string[]): Promise<Record<string, any>[
             properties: {
               word: { type: Type.STRING, description: 'The English word' },
               part_of_speech: { type: Type.STRING, description: 'Part of speech (e.g., n., v., adj.)' },
-              phonetic: { type: Type.STRING, description: 'International Phonetic Alphabet (IPA) transcription (e.g., /əˈbændən/)' },
-              root: { type: Type.STRING, description: 'Root and affix analysis (e.g., a- (not) + bandon (control)). Leave empty if none.' },
+              phonetic: { type: Type.STRING, description: 'International Phonetic Alphabet (IPA) transcription' },
+              prefix: { type: Type.STRING, description: 'The prefix part' },
+              prefix_meaning: { type: Type.STRING, description: 'Chinese meaning of the prefix' },
+              root_core: { type: Type.STRING, description: 'The core root' },
+              root_meaning: { type: Type.STRING, description: 'Chinese meaning of the root' },
+              suffix: { type: Type.STRING, description: 'The suffix part' },
+              suffix_meaning: { type: Type.STRING, description: 'Chinese meaning of the suffix' },
+              root: { type: Type.STRING, description: 'Concise summary of the breakdown' },
               meaning: { type: Type.STRING, description: 'Chinese meaning' },
-              phrase: { type: Type.STRING, description: 'A common phrase using the word' },
-              example_sentence: { type: Type.STRING, description: 'An English example sentence using the word' }
+              phrase: { type: Type.STRING, description: 'A common phrase' },
+              example_sentence: { type: Type.STRING, description: 'An English example sentence' }
             },
-            required: ['word', 'part_of_speech', 'phonetic', 'root', 'meaning', 'phrase', 'example_sentence']
+            required: ['word', 'part_of_speech', 'phonetic', 'prefix', 'prefix_meaning', 'root_core', 'root_meaning', 'suffix', 'suffix_meaning', 'root', 'meaning', 'phrase', 'example_sentence']
           }
         }
       }

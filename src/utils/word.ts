@@ -2,7 +2,13 @@ export interface WordData {
   word: string;
   part_of_speech: string;
   phonetic?: string;
-  root: string;
+  prefix?: string;
+  prefix_meaning?: string;
+  root_core?: string;
+  root_meaning?: string;
+  suffix?: string;
+  suffix_meaning?: string;
+  root: string; // Keep for backward compatibility or as a summary
   meaning: string;
   phrase?: string;
   example_sentence?: string;
