@@ -1,12 +1,16 @@
-# GEMINI_API_KEY: Required for Gemini AI API calls.
-# AI Studio automatically injects this at runtime from user secrets.
-# Users configure this via the Secrets panel in the AI Studio UI.
-GEMINI_API_KEY="MY_GEMINI_API_KEY"
-IMA_CLIENT_ID=""
-IMA_API_KEY=""
-IMA_API_URL="https://ima.qq.com/agent-interface/api/v1/chat"
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
 
-# APP_URL: The URL where this applet is hosted.
-# AI Studio automatically injects this at runtime with the Cloud Run service URL.
-# Used for self-referential links, OAuth callbacks, and API endpoints.
-APP_URL="MY_APP_URL"
+## Run Locally
+Prerequisites: Node.js
+
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+2. Set the `GEMINI_API_KEY` in `.env.local` to your Gemini API key
+3. Run the app:
+   ```bash
+   npm run dev
+   ```

@@ -8,7 +8,6 @@ export interface WordData {
   root_meaning?: string;
   suffix?: string;
   suffix_meaning?: string;
-  root: string; // Keep for backward compatibility or as a summary
   meaning: string;
   phrase?: string;
   example_sentence?: string;

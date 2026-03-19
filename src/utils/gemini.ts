@@ -27,8 +27,7 @@ Important:
 - root_core: The core root of the word (e.g., 'dict' in 'predict').
 - root_meaning: The Chinese meaning of the root (e.g., '说').
 - suffix: The suffix part (e.g., '-ion', '-ly'). Leave empty if none.
-- suffix_meaning: The Chinese meaning of the suffix (e.g., '名词后缀').
-- root: A concise summary of the breakdown (e.g., 'pre- (before) + dict (to say)').`;
+- suffix_meaning: The Chinese meaning of the suffix (e.g., '名词后缀').`;
   
   try {
     const aiInstance = getAI();
@@ -54,12 +53,11 @@ Important:
               root_meaning: { type: Type.STRING, description: 'Chinese meaning of the root' },
               suffix: { type: Type.STRING, description: 'The suffix part' },
               suffix_meaning: { type: Type.STRING, description: 'Chinese meaning of the suffix' },
-              root: { type: Type.STRING, description: 'Concise summary of the breakdown' },
               meaning: { type: Type.STRING, description: 'Chinese meaning' },
               phrase: { type: Type.STRING, description: 'A common phrase' },
               example_sentence: { type: Type.STRING, description: 'An English example sentence' }
             },
-            required: ['word', 'part_of_speech', 'phonetic', 'prefix', 'prefix_meaning', 'root_core', 'root_meaning', 'suffix', 'suffix_meaning', 'root', 'meaning', 'phrase', 'example_sentence']
+            required: ['word', 'part_of_speech', 'phonetic', 'prefix', 'prefix_meaning', 'root_core', 'root_meaning', 'suffix', 'suffix_meaning', 'meaning', 'phrase', 'example_sentence']
           }
         }
       }

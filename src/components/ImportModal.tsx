@@ -28,20 +28,17 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
 
     setError(null);
     
-    // Auto-fill list name from file name if empty
-    let currentListName = listName.trim();
-    if (!currentListName) {
-      const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
-      setListName(nameWithoutExt);
-      currentListName = nameWithoutExt;
-    }
+    // Auto-fill list name from file name
+    const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+    setListName(nameWithoutExt);
+    const currentListName = nameWithoutExt;
 
     if (file.name.endsWith('.json')) {
       const reader = new FileReader();
       reader.onload = (event) => {
         try {
           const json = JSON.parse(event.target?.result as string);
-          processImportedData(Array.isArray(json) ? json : [json]);
+          processImportedData(Array.isArray(json) ? json : [json], currentListName);
         } catch (err) {
           setError('Invalid JSON file format.');
         }
@@ -56,7 +53,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
             setError('Error parsing CSV file.');
             return;
           }
-          processImportedData(results.data);
+          processImportedData(results.data, currentListName);
         },
       });
     } else if (file.name.endsWith('.docx')) {
@@ -69,7 +66,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
           const words = text.match(/[a-zA-Z-]+/g);
           if (words && words.length > 0) {
             const uniqueWords = Array.from(new Set(words.map(w => w.toLowerCase())));
-            processImportedData(uniqueWords.map(w => ({ word: w })));
+            processImportedData(uniqueWords.map(w => ({ word: w })), currentListName);
           } else {
             setError('Could not extract any valid English words from the Word document.');
           }
@@ -86,7 +83,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
         const words = text.match(/[a-zA-Z-]+/g);
         if (words && words.length > 0) {
           const uniqueWords = Array.from(new Set(words.map(w => w.toLowerCase())));
-          processImportedData(uniqueWords.map(w => ({ word: w })));
+          processImportedData(uniqueWords.map(w => ({ word: w })), currentListName);
         } else {
           setError('Could not extract any valid English words from the text file.');
         }
@@ -96,6 +93,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
   };
 
   const handlePasteSubmit = () => {
+    if (!listName.trim()) {
+      setError('Please enter a List Name.');
+      return;
+    }
     if (!pasteContent.trim()) {
       setError('Please paste some content first.');
       return;
@@ -134,11 +135,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
     });
   };
 
-  const processImportedData = async (data: any[]) => {
+  const processImportedData = async (data: any[], overrideListName?: string) => {
     setIsEnriching(true);
     setError(null);
     
-    const finalListName = listName.trim() || 'Default List';
+    const finalListName = overrideListName || listName.trim() || 'Default List';
     
     try {
       const validWords: WordState[] = [];
@@ -173,7 +174,6 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
             word: wordStr,
             part_of_speech: forceEnrich ? '' : (item['词性'] || item.part_of_speech || existingWord?.part_of_speech || ''),
             phonetic: forceEnrich ? '' : (item['音标'] || item.phonetic || existingWord?.phonetic || ''),
-            root: forceEnrich ? '' : (item['词根'] || item.root || existingWord?.root || ''),
             prefix: forceEnrich ? '' : (item['前缀'] || item.prefix || existingWord?.prefix || ''),
             prefix_meaning: forceEnrich ? '' : (item['前缀含义'] || item.prefix_meaning || existingWord?.prefix_meaning || ''),
             root_core: forceEnrich ? '' : (item['词根核心'] || item.root_core || existingWord?.root_core || ''),
@@ -256,7 +256,6 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
               wordObj.root_meaning = enriched.root_meaning || wordObj.root_meaning;
               wordObj.suffix = enriched.suffix || wordObj.suffix;
               wordObj.suffix_meaning = enriched.suffix_meaning || wordObj.suffix_meaning;
-              wordObj.root = enriched.root || wordObj.root;
               wordObj.meaning = enriched.meaning || wordObj.meaning;
               wordObj.phrase = enriched.phrase || wordObj.phrase;
               wordObj.example_sentence = enriched.example_sentence || wordObj.example_sentence;
@@ -293,15 +292,19 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
 
         <div className="mb-6">
           <label className="block text-sm font-medium text-zinc-400 mb-2">
-            List Name <span className="text-zinc-600 text-xs font-normal ml-1">(Optional)</span>
+            List Name {activeTab === 'paste' ? (
+              <span className="text-rose-500 text-xs font-normal ml-1">(Required)</span>
+            ) : (
+              <span className="text-zinc-600 text-xs font-normal ml-1">(Optional - defaults to file name)</span>
+            )}
           </label>
           <input 
             type="text" 
             value={listName}
             onChange={(e) => setListName(e.target.value)}
             disabled={isEnriching}
-            placeholder="e.g., TOEFL Core, Chapter 1..."
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-300 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50"
+            placeholder={activeTab === 'paste' ? "Enter list name..." : "e.g., TOEFL Core, Chapter 1..."}
+            className={`w-full bg-zinc-950 border rounded-xl p-3 text-sm text-zinc-300 focus:outline-none focus:ring-1 disabled:opacity-50 transition-colors ${activeTab === 'paste' && !listName.trim() ? 'border-rose-500/50 focus:border-rose-500 focus:ring-rose-500/50' : 'border-zinc-800 focus:border-emerald-500/50 focus:ring-emerald-500/50'}`}
           />
         </div>
 

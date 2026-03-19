@@ -203,7 +203,6 @@ export default function App() {
           root_meaning: details.root_meaning || '',
           suffix: details.suffix || '',
           suffix_meaning: details.suffix_meaning || '',
-          root: details.root || '',
           phrase: details.phrase || '',
           example_sentence: details.example_sentence || '',
           review_count: 0,
@@ -237,7 +236,6 @@ export default function App() {
           root_meaning: '',
           suffix: '',
           suffix_meaning: '',
-          root: '',
           phrase: '',
           example_sentence: '',
           review_count: 0,
@@ -899,23 +897,33 @@ export default function App() {
       return;
     }
 
-    // Prepare data for export with Chinese headers
-    const exportData = words.map(({ word, part_of_speech, phonetic, prefix, prefix_meaning, root_core, root_meaning, suffix, suffix_meaning, root, meaning, phrase, example_sentence, listName }) => ({
-      '单词': word || '',
-      '词性': part_of_speech || '',
-      '音标': phonetic || '',
-      '前缀': prefix || '',
-      '前缀含义': prefix_meaning || '',
-      '词根核心': root_core || '',
-      '词根含义': root_meaning || '',
-      '后缀': suffix || '',
-      '后缀含义': suffix_meaning || '',
-      '词根简述': root || '',
-      '释义': meaning || '',
-      '词组': phrase || '',
-      '例句': example_sentence || '',
-      '列表名称': listName || ''
-    }));
+    // Prepare data for export with Chinese headers and Excel formula protection
+    const exportData = words.map(({ word, part_of_speech, phonetic, prefix, prefix_meaning, root_core, root_meaning, suffix, suffix_meaning, meaning, phrase, example_sentence, listName }) => {
+      // Helper to prevent Excel from interpreting fields starting with -, =, +, @ as formulas
+      const sanitize = (val: string | undefined | null) => {
+        const s = val || '';
+        if (s.startsWith('-') || s.startsWith('=') || s.startsWith('+') || s.startsWith('@')) {
+          return `'${s}`;
+        }
+        return s;
+      };
+
+      return {
+        '单词': sanitize(word),
+        '词性': sanitize(part_of_speech),
+        '音标': sanitize(phonetic),
+        '前缀': sanitize(prefix),
+        '前缀含义': sanitize(prefix_meaning),
+        '词根核心': sanitize(root_core),
+        '词根含义': sanitize(root_meaning),
+        '后缀': sanitize(suffix),
+        '后缀含义': sanitize(suffix_meaning),
+        '释义': sanitize(meaning),
+        '词组': sanitize(phrase),
+        '例句': sanitize(example_sentence),
+        '列表名称': sanitize(listName)
+      };
+    });
 
     const csv = Papa.unparse(exportData);
     // Add BOM for Excel UTF-8 support
@@ -1435,11 +1443,7 @@ export default function App() {
                       <span>{currentWord.suffix} {currentWord.suffix_meaning && `(${currentWord.suffix_meaning})`}</span>
                     )}
                   </div>
-                ) : currentWord.root && (
-                  <p className="text-sm text-zinc-500 font-mono mt-1">
-                    {currentWord.root}
-                  </p>
-                )}
+                ) : null}
                 {currentWord.phrase && (
                   <div className="flex items-center justify-center space-x-2 mt-2">
                     <p className="text-lg text-emerald-400/90 font-medium">
@@ -1643,7 +1647,7 @@ export default function App() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-2xl p-6 shadow-2xl"
+              className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
             >
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-white">编辑单词</h2>
@@ -1768,16 +1772,6 @@ export default function App() {
                       placeholder="后缀含义"
                     />
                   </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">词根简述</label>
-                  <input
-                    type="text"
-                    value={editingWordData.root || ''}
-                    onChange={(e) => setEditingWordData({ ...editingWordData, root: e.target.value })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50"
-                    placeholder="Summary of breakdown"
-                  />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">词组</label>
