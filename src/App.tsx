@@ -1141,34 +1141,6 @@ export default function App() {
             )}
           </div>
           
-          {/* Search Bar */}
-          <div className="absolute left-1/2 -translate-x-1/2 w-full max-w-[192px] hidden md:block">
-            <div className="relative group">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleSearch();
-                  }
-                }}
-                placeholder="Search or add word..."
-                className="w-full bg-zinc-900/50 border border-zinc-500 rounded-full py-1.5 pl-4 pr-10 text-sm text-zinc-300 focus:outline-none focus:border-white focus:bg-zinc-900 transition-all"
-              />
-              <button
-                onClick={handleSearch}
-                disabled={isSearching}
-                className={`absolute right-1 top-1/2 -translate-y-1/2 p-1.5 transition-colors ${
-                  isSearching ? 'text-emerald-500 animate-pulse' : 'text-zinc-500 hover:text-emerald-400'
-                }`}
-                title="Search or Add Word"
-              >
-                <Search size={16} />
-              </button>
-            </div>
-          </div>
-          
           <div className="flex items-center space-x-3">
             <button
               onClick={() => setIsEbbinghausMode(!isEbbinghausMode)}
@@ -1218,6 +1190,34 @@ export default function App() {
               className="text-sm font-medium text-zinc-400 hover:text-white transition-colors px-4 py-2 rounded-full border border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900"
             >
               Import Data
+            </button>
+          </div>
+        </div>
+
+        {/* Search Bar */}
+        <div className="w-full max-w-56 mx-auto hidden md:block">
+          <div className="relative group">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleSearch();
+                }
+              }}
+              placeholder="Search or add word..."
+              className="w-full bg-zinc-900/50 border border-zinc-500 rounded-full py-1.5 pl-4 pr-10 text-sm text-zinc-300 focus:outline-none focus:border-white focus:bg-zinc-900 transition-all"
+            />
+            <button
+              onClick={handleSearch}
+              disabled={isSearching}
+              className={`absolute right-1 top-1/2 -translate-y-1/2 p-1.5 transition-colors ${
+                isSearching ? 'text-emerald-500 animate-pulse' : 'text-zinc-500 hover:text-emerald-400'
+              }`}
+              title="Search or Add Word"
+            >
+              <Search size={16} />
             </button>
           </div>
         </div>
@@ -1885,7 +1885,7 @@ export default function App() {
       </AnimatePresence>
 
       <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
-        Rev 2.4 Designed by robin.yj.ye@gmail.com in Mar 2026
+        Rev 2.5 Designed by robin.yj.ye@gmail.com in Mar 2026
       </div>
     </div>
   );
