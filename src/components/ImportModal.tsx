@@ -27,9 +27,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
     setError(null);
     
     // Auto-fill list name from file name if empty
-    if (!listName.trim()) {
+    let currentListName = listName.trim();
+    if (!currentListName) {
       const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
       setListName(nameWithoutExt);
+      currentListName = nameWithoutExt;
+    }
+
+    if (!currentListName) {
+      setError('Please enter a list name first.');
+      return;
     }
 
     if (file.name.endsWith('.json')) {
@@ -92,6 +99,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
   };
 
   const handlePasteSubmit = () => {
+    if (!listName.trim()) {
+      setError('Please enter a list name first.');
+      return;
+    }
+
     if (!pasteContent.trim()) {
       setError('Please paste some content first.');
       return;
@@ -134,7 +146,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
     setIsEnriching(true);
     setError(null);
     
-    const finalListName = listName.trim() || 'Default List';
+    const finalListName = listName.trim();
+    if (!finalListName) {
+      setError('List name is required.');
+      setIsEnriching(false);
+      return;
+    }
     
     try {
       const validWords: WordState[] = [];
@@ -281,14 +298,17 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
         </p>
 
         <div className="mb-6">
-          <label className="block text-sm font-medium text-zinc-400 mb-2">List Name (Optional)</label>
+          <label className="block text-sm font-medium text-zinc-400 mb-2">
+            List Name <span className="text-rose-500">*</span>
+          </label>
           <input 
             type="text" 
             value={listName}
             onChange={(e) => setListName(e.target.value)}
             disabled={isEnriching}
+            required
             placeholder="e.g., TOEFL Core, Chapter 1..."
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-300 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50"
+            className={`w-full bg-zinc-950 border rounded-xl p-3 text-sm text-zinc-300 focus:outline-none focus:ring-1 disabled:opacity-50 ${error && !listName.trim() ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/50' : 'border-zinc-800 focus:border-emerald-500/50 focus:ring-emerald-500/50'}`}
           />
         </div>
 

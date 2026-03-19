@@ -1885,7 +1885,7 @@ export default function App() {
       </AnimatePresence>
 
       <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
-        Rev 2.3 Designed by robin.yj.ye@gmail.com in Mar 2026
+        Rev 2.4 Designed by robin.yj.ye@gmail.com in Mar 2026
       </div>
     </div>
   );
