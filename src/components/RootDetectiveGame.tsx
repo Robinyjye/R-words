@@ -169,7 +169,7 @@ export function RootDetectiveGame({ words, onClose }: RootDetectiveGameProps) {
           <BookOpen size={48} className="mx-auto text-indigo-500 mb-4" />
           <h2 className="text-2xl font-bold text-slate-800 mb-2">词根侦探</h2>
           <p className="text-slate-500 mb-6">
-            词库中的词根/词缀数据不足。请先导入更多包含词根信息的单词，或者通过搜索添加新单词。
+            当前列表中的词根/词缀数据不足（需要至少4个）。请先导入更多包含词根信息的单词，或切换到其他列表。
           </p>
           <button
             onClick={onClose}
