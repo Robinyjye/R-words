@@ -10,6 +10,7 @@ function cn(...classes: (string | undefined | null | false)[]) {
 
 interface RootDetectiveGameProps {
   words: WordState[];
+  allWords: WordState[];
   onClose: () => void;
 }
 
@@ -22,7 +23,7 @@ type RootItem = {
 
 type GameState = 'home' | 'quiz' | 'gameover';
 
-export function RootDetectiveGame({ words, onClose }: RootDetectiveGameProps) {
+export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGameProps) {
   const [gameState, setGameState] = useState<GameState>('home');
   const [lives, setLives] = useState(3);
   const [streak, setStreak] = useState(0);
@@ -36,41 +37,62 @@ export function RootDetectiveGame({ words, onClose }: RootDetectiveGameProps) {
   // Extract all valid roots, prefixes, suffixes
   const rootItems = useMemo(() => {
     const itemsMap = new Map<string, RootItem>();
+    const activeRoots = new Set<string>();
 
+    // Determine which roots are in the current list
     words.forEach(w => {
+      if (w.root_core && w.root_meaning) {
+        activeRoots.add(`root:${w.root_core.toLowerCase().trim()}`);
+      }
+      if (w.prefix && w.prefix_meaning) {
+        activeRoots.add(`prefix:${w.prefix.toLowerCase().trim()}`);
+      }
+      if (w.suffix && w.suffix_meaning) {
+        activeRoots.add(`suffix:${w.suffix.toLowerCase().trim()}`);
+      }
+    });
+
+    // Gather example words from ALL words, but only for active roots
+    allWords.forEach(w => {
       if (w.root_core && w.root_meaning) {
         const text = w.root_core.toLowerCase().trim();
         const key = `root:${text}`;
-        if (!itemsMap.has(key)) {
-          itemsMap.set(key, { type: 'root', text, meaning: w.root_meaning, exampleWords: [{ word: w.word, translation: w.translation }] });
-        } else {
-          const item = itemsMap.get(key)!;
-          if (!item.exampleWords.find(ex => ex.word === w.word)) {
-            item.exampleWords.push({ word: w.word, translation: w.translation });
+        if (activeRoots.has(key)) {
+          if (!itemsMap.has(key)) {
+            itemsMap.set(key, { type: 'root', text, meaning: w.root_meaning, exampleWords: [{ word: w.word, translation: w.translation }] });
+          } else {
+            const item = itemsMap.get(key)!;
+            if (!item.exampleWords.find(ex => ex.word === w.word)) {
+              item.exampleWords.push({ word: w.word, translation: w.translation });
+            }
           }
         }
       }
       if (w.prefix && w.prefix_meaning) {
         const text = w.prefix.toLowerCase().trim();
         const key = `prefix:${text}`;
-        if (!itemsMap.has(key)) {
-          itemsMap.set(key, { type: 'prefix', text, meaning: w.prefix_meaning, exampleWords: [{ word: w.word, translation: w.translation }] });
-        } else {
-          const item = itemsMap.get(key)!;
-          if (!item.exampleWords.find(ex => ex.word === w.word)) {
-            item.exampleWords.push({ word: w.word, translation: w.translation });
+        if (activeRoots.has(key)) {
+          if (!itemsMap.has(key)) {
+            itemsMap.set(key, { type: 'prefix', text, meaning: w.prefix_meaning, exampleWords: [{ word: w.word, translation: w.translation }] });
+          } else {
+            const item = itemsMap.get(key)!;
+            if (!item.exampleWords.find(ex => ex.word === w.word)) {
+              item.exampleWords.push({ word: w.word, translation: w.translation });
+            }
           }
         }
       }
       if (w.suffix && w.suffix_meaning) {
         const text = w.suffix.toLowerCase().trim();
         const key = `suffix:${text}`;
-        if (!itemsMap.has(key)) {
-          itemsMap.set(key, { type: 'suffix', text, meaning: w.suffix_meaning, exampleWords: [{ word: w.word, translation: w.translation }] });
-        } else {
-          const item = itemsMap.get(key)!;
-          if (!item.exampleWords.find(ex => ex.word === w.word)) {
-            item.exampleWords.push({ word: w.word, translation: w.translation });
+        if (activeRoots.has(key)) {
+          if (!itemsMap.has(key)) {
+            itemsMap.set(key, { type: 'suffix', text, meaning: w.suffix_meaning, exampleWords: [{ word: w.word, translation: w.translation }] });
+          } else {
+            const item = itemsMap.get(key)!;
+            if (!item.exampleWords.find(ex => ex.word === w.word)) {
+              item.exampleWords.push({ word: w.word, translation: w.translation });
+            }
           }
         }
       }
@@ -82,11 +104,17 @@ export function RootDetectiveGame({ words, onClose }: RootDetectiveGameProps) {
     });
 
     return Array.from(itemsMap.values());
-  }, [words]);
+  }, [words, allWords]);
 
   const allMeanings = useMemo(() => {
-    return Array.from(new Set(rootItems.map(item => item.meaning)));
-  }, [rootItems]);
+    const meanings = new Set<string>();
+    allWords.forEach(w => {
+      if (w.root_meaning) meanings.add(w.root_meaning);
+      if (w.prefix_meaning) meanings.add(w.prefix_meaning);
+      if (w.suffix_meaning) meanings.add(w.suffix_meaning);
+    });
+    return Array.from(meanings);
+  }, [allWords]);
 
   const generateQuestion = useCallback(() => {
     if (rootItems.length < 4) {

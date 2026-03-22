@@ -1994,6 +1994,7 @@ export default function App() {
       {showRootDetective && (
         <RootDetectiveGame 
           words={filteredWords} 
+          allWords={words}
           onClose={() => setShowRootDetective(false)} 
         />
       )}
