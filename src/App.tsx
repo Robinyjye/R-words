@@ -10,7 +10,8 @@ import { enrichWords } from './utils/gemini';
 import { playKeystrokeSound, playSuccessSound, speakWord, playComboSound } from './utils/audio';
 import { ImportModal } from './components/ImportModal';
 import { StatsModal } from './components/StatsModal';
-import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, CopyX, BarChart2, Search } from 'lucide-react';
+import { RootDetectiveGame } from './components/RootDetectiveGame';
+import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, CopyX, BarChart2, Search, BookOpen } from 'lucide-react';
 import Papa from 'papaparse';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
@@ -159,6 +160,7 @@ export default function App() {
   const [showCombo, setShowCombo] = useState(false);
   const [gameStatus, setGameStatus] = useState<'playing' | 'correct' | 'finished'>('playing');
   const [isPeeking, setIsPeeking] = useState(false);
+  const [showRootDetective, setShowRootDetective] = useState(false);
 
   // Search State
   const [searchTerm, setSearchTerm] = useState('');
@@ -1242,6 +1244,13 @@ export default function App() {
               <Gamepad2 size={18} />
             </button>
             <button
+              onClick={() => setShowRootDetective(true)}
+              className="p-2 rounded-full border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 hover:bg-zinc-900 transition-colors flex items-center justify-center"
+              title="Root Detective"
+            >
+              <BookOpen size={18} />
+            </button>
+            <button
               onClick={() => setShowStats(true)}
               className="p-2 rounded-full border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 hover:bg-zinc-900 transition-colors flex items-center justify-center"
               title="Statistics"
@@ -1981,6 +1990,13 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {showRootDetective && (
+        <RootDetectiveGame 
+          words={words} 
+          onClose={() => setShowRootDetective(false)} 
+        />
+      )}
 
       <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
         Rev 2.7 Designed by robin.yj.ye@gmail.com in Mar 2026

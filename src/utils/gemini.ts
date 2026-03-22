@@ -4,7 +4,7 @@ let ai: GoogleGenAI | null = null;
 
 function getAI() {
   if (!ai) {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = localStorage.getItem('GEMINI_API_KEY') || process.env.GEMINI_API_KEY;
     if (!apiKey) {
       console.warn("GEMINI_API_KEY is not set. AI features will not work.");
       // Return a dummy object or throw a handled error later
@@ -12,6 +12,11 @@ function getAI() {
     ai = new GoogleGenAI({ apiKey: apiKey || 'dummy-key-to-prevent-crash' });
   }
   return ai;
+}
+
+// Function to reset AI instance when key changes
+export function resetAI() {
+  ai = null;
 }
 
 export async function enrichWords(words: string[]): Promise<Record<string, any>[]> {
@@ -30,10 +35,11 @@ Important:
 - suffix_meaning: The Chinese meaning of the suffix (e.g., '名词后缀').`;
   
   try {
-    const aiInstance = getAI();
-    if (process.env.GEMINI_API_KEY === undefined || process.env.GEMINI_API_KEY === '') {
-        throw new Error("GEMINI_API_KEY environment variable is missing.");
+    const apiKey = localStorage.getItem('GEMINI_API_KEY') || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        throw new Error("API_KEY_MISSING");
     }
+    const aiInstance = getAI();
     const response = await aiInstance.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
