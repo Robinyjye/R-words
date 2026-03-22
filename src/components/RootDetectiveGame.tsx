@@ -145,6 +145,8 @@ export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGam
     return true;
   }, [rootItems, allMeanings]);
 
+  const TOTAL_QUESTIONS = Math.min(20, rootItems.length);
+
   const startGame = () => {
     if (rootItems.length < 4) return;
     setScore(0);
@@ -182,8 +184,14 @@ export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGam
     }
 
     setTimeout(() => {
-      setQuestionCount(prev => prev + 1);
-      generateQuestion();
+      const nextCount = questionCount + 1;
+      if (nextCount >= TOTAL_QUESTIONS) {
+        setQuestionCount(nextCount);
+        setGameState('gameover');
+      } else {
+        setQuestionCount(nextCount);
+        generateQuestion();
+      }
     }, 1500);
   };
 
@@ -296,10 +304,8 @@ export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGam
                   <div className="absolute top-0 left-0 w-full h-1 bg-slate-100">
                     <motion.div 
                       className="h-full bg-indigo-500"
-                      initial={{ width: '0%' }}
-                      animate={{ width: '100%' }}
-                      transition={{ duration: 15, ease: "linear" }}
-                      key={questionCount}
+                      animate={{ width: `${((questionCount + (selectedOption ? 1 : 0)) / TOTAL_QUESTIONS) * 100}%` }}
+                      transition={{ duration: 0.5, ease: "easeInOut" }}
                     />
                   </div>
                   <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-1 block mt-1">
@@ -366,13 +372,13 @@ export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGam
                 animate={{ opacity: 1, scale: 1 }}
                 className="flex flex-col items-center text-center gap-5 bg-white p-6 rounded-3xl shadow-xl border border-slate-100 my-auto"
               >
-                <div className="w-16 h-16 bg-rose-100 text-rose-500 rounded-full flex items-center justify-center">
-                  <Heart className="w-8 h-8" />
+                <div className={cn("w-16 h-16 rounded-full flex items-center justify-center", lives > 0 ? "bg-emerald-100 text-emerald-500" : "bg-rose-100 text-rose-500")}>
+                  {lives > 0 ? <Trophy className="w-8 h-8" /> : <Heart className="w-8 h-8" />}
                 </div>
                 
                 <div>
-                  <h2 className="text-2xl font-black text-slate-800 mb-1">挑战结束</h2>
-                  <p className="text-slate-500 text-sm">你已经做得很棒了！</p>
+                  <h2 className="text-2xl font-black text-slate-800 mb-1">{lives > 0 ? '挑战成功！' : '挑战结束'}</h2>
+                  <p className="text-slate-500 text-sm">{lives > 0 ? '你完成了所有题目！' : '你已经做得很棒了！'}</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 w-full">
