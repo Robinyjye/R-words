@@ -6,7 +6,7 @@ import { enrichWords } from '../utils/gemini';
 import { Upload, X, FileText, ClipboardPaste, Loader2 } from 'lucide-react';
 
 interface ImportModalProps {
-  onImport: (words: WordState[]) => void;
+  onImport: (words: WordState[], stats?: any) => void;
   onClose: () => void;
   existingWords: WordState[];
 }
@@ -41,7 +41,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
           // Handle full backup format or direct array
           if (json && typeof json === 'object' && !Array.isArray(json)) {
             if (Array.isArray(json.words)) {
-              processImportedData(json.words, currentListName);
+              processImportedData(json.words, currentListName, json.stats);
             } else {
               processImportedData([json], currentListName);
             }
@@ -118,7 +118,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
       const json = JSON.parse(pasteContent);
       if (json && typeof json === 'object' && !Array.isArray(json)) {
         if (Array.isArray(json.words)) {
-          processImportedData(json.words);
+          processImportedData(json.words, undefined, json.stats);
         } else {
           processImportedData([json]);
         }
@@ -152,7 +152,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
     });
   };
 
-  const processImportedData = async (data: any[], overrideListName?: string) => {
+  const processImportedData = async (data: any[], overrideListName?: string, importedStats?: any) => {
     setIsEnriching(true);
     setError(null);
     
@@ -216,7 +216,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
             is_mastered: isMastered || existingWord?.is_mastered || false,
           };
 
-          if (forceEnrich || !wordObj.meaning || !wordObj.example_sentence || !wordObj.phrase) {
+          // If forceEnrich is on, always enrich
+          // Otherwise, only auto-enrich if the meaning is missing
+          const needsEnrichment = forceEnrich || !wordObj.meaning;
+
+          if (needsEnrichment) {
             wordsToEnrich.push(wordStr);
           }
           validWords.push(wordObj);
@@ -290,7 +294,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
         }
       }
 
-      onImport(validWords);
+      onImport(validWords, importedStats);
     } catch (err: any) {
       setError(err.message || 'An error occurred while processing words.');
     } finally {

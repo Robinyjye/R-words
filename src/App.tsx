@@ -949,7 +949,7 @@ export default function App() {
 
     const backupData = {
       words,
-      stats: JSON.parse(localStorage.getItem('ebbinghaus_stats') || '[]'),
+      stats: JSON.parse(localStorage.getItem('ebbinghaus_stats') || '{}'),
       exportDate: new Date().toISOString(),
       version: '1.0'
     };
@@ -966,7 +966,7 @@ export default function App() {
     showToast(`已生成全量备份文件（含学习记录）。`);
   };
 
-  const handleImport = (importedWords: WordState[]) => {
+  const handleImport = (importedWords: WordState[], importedStats?: Stats) => {
     // Merge with existing words, avoiding duplicates by word text
     const existingWordsMap = new Map<string, WordState>(words.map(w => [w.word.toLowerCase(), w]));
     
@@ -1001,6 +1001,24 @@ export default function App() {
     const mergedWords = Array.from(existingWordsMap.values());
     setWords(mergedWords);
     saveWords(mergedWords);
+
+    // Restore stats if available
+    if (importedStats && typeof importedStats === 'object' && !Array.isArray(importedStats)) {
+      setStats(prev => {
+        const mergedDaily = { ...prev.daily };
+        if (importedStats.daily) {
+          for (const date in importedStats.daily) {
+            if (!mergedDaily[date] || importedStats.daily[date].count > mergedDaily[date].count) {
+              mergedDaily[date] = importedStats.daily[date];
+            }
+          }
+        }
+        return {
+          totalCount: Math.max(prev.totalCount, importedStats.totalCount || 0),
+          daily: mergedDaily
+        };
+      });
+    }
     
     if (currentWord) {
       const updatedCurrent = existingWordsMap.get(currentWord.word.toLowerCase());
