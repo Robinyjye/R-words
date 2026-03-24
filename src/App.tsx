@@ -419,6 +419,36 @@ export default function App() {
         setShowCombo(true);
         playComboSound(newCombo);
         speakWord(gameWords[currentGameIdx].word);
+
+        // Update stats and word progress
+        const now = Date.now();
+        const currentWord = gameWords[currentGameIdx];
+        const today = new Date().toISOString().split('T')[0];
+
+        setStats(prev => {
+          const daily = { ...prev.daily };
+          if (!daily[today]) daily[today] = { count: 0 };
+          return {
+            ...prev,
+            totalCount: prev.totalCount + 1,
+            daily: {
+              ...daily,
+              [today]: {
+                ...daily[today],
+                count: daily[today].count + 1
+              }
+            }
+          };
+        });
+        setSessionWordCount(prev => prev + 1);
+
+        const updatedWords = words.map(w => 
+          w.id === currentWord.id 
+            ? { ...w, review_count: w.review_count + 1, last_review_time: now } 
+            : w
+        );
+        setWords(updatedWords);
+        saveWords(updatedWords);
         
         const delay = isMilestone ? (2000 + (Math.floor(newCombo / 5) - 1) * 1000) : 1200;
         setTimeout(() => {
@@ -439,7 +469,7 @@ export default function App() {
       // Visual feedback for wrong? Maybe shake?
       playKeystrokeSound(char); // Or a different sound? User asked for mechanical keyboard sound for typing.
     }
-  }, [gameStatus, gameInput, gameWords, currentGameIdx, gameBlanks, combo, setupWordGame]);
+  }, [gameStatus, gameInput, gameWords, currentGameIdx, gameBlanks, combo, setupWordGame, words, setWords, saveWords, setStats, setSessionWordCount]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
