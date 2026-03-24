@@ -11,7 +11,7 @@ import { playKeystrokeSound, playSuccessSound, speakWord, playComboSound } from 
 import { ImportModal } from './components/ImportModal';
 import { StatsModal } from './components/StatsModal';
 import { RootDetectiveGame } from './components/RootDetectiveGame';
-import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, Save, CopyX, BarChart2, Search, BookOpen } from 'lucide-react';
+import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, Save, CopyX, BarChart2, Search, BookOpen, Sparkles, Loader2 } from 'lucide-react';
 import Papa from 'papaparse';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
@@ -75,6 +75,7 @@ export default function App() {
   const [listToDelete, setListToDelete] = useState<string | null>(null);
   const [isEditingWord, setIsEditingWord] = useState(false);
   const [editingWordData, setEditingWordData] = useState<WordState | null>(null);
+  const [isEnrichingEdit, setIsEnrichingEdit] = useState(false);
 
   // Load words on mount
   useEffect(() => {
@@ -828,6 +829,36 @@ export default function App() {
     setIsEditingWord(false);
     setEditingWordData(null);
     showToast(`已更新单词 "${editingWordData.word}"`);
+  };
+
+  const handleEnrichEditingWord = async () => {
+    if (!editingWordData?.word.trim() || isEnrichingEdit) return;
+    setIsEnrichingEdit(true);
+    try {
+      const enriched = await enrichWords([editingWordData.word.trim()]);
+      const details = enriched[0];
+      if (details) {
+        setEditingWordData({
+          ...editingWordData,
+          meaning: details.meaning || editingWordData.meaning,
+          part_of_speech: details.part_of_speech || editingWordData.part_of_speech,
+          phonetic: details.phonetic || editingWordData.phonetic,
+          prefix: details.prefix || editingWordData.prefix,
+          prefix_meaning: details.prefix_meaning || editingWordData.prefix_meaning,
+          root_core: details.root_core || editingWordData.root_core,
+          root_meaning: details.root_meaning || editingWordData.root_meaning,
+          suffix: details.suffix || editingWordData.suffix,
+          suffix_meaning: details.suffix_meaning || editingWordData.suffix_meaning,
+          phrase: details.phrase || editingWordData.phrase,
+          example_sentence: details.example_sentence || editingWordData.example_sentence,
+        });
+        showToast(`已通过 AI 更新单词 "${editingWordData.word}" 的详细信息`);
+      }
+    } catch (error) {
+      showToast("AI 更新失败，请检查网络或 API Key");
+    } finally {
+      setIsEnrichingEdit(false);
+    }
   };
 
   const startReview = () => {
@@ -1756,13 +1787,28 @@ export default function App() {
               <form onSubmit={handleUpdateWord} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">单词</label>
-                  <input
-                    type="text"
-                    value={editingWordData.word}
-                    onChange={(e) => setEditingWordData({ ...editingWordData, word: e.target.value })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50"
-                    required
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={editingWordData.word}
+                      onChange={(e) => setEditingWordData({ ...editingWordData, word: e.target.value })}
+                      className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={handleEnrichEditingWord}
+                      disabled={isEnrichingEdit || !editingWordData.word.trim()}
+                      className={`px-3 rounded-lg flex items-center justify-center transition-all ${
+                        isEnrichingEdit 
+                          ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
+                          : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border border-emerald-500/20'
+                      }`}
+                      title="AI 自动补全"
+                    >
+                      {isEnrichingEdit ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                    </button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
