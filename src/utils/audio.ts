@@ -102,6 +102,28 @@ export const playSuccessSound = () => {
       return;
     }
 
+    // Old simple sine wave sound
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, now);
+    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+    gainNode.gain.setValueAtTime(0.1, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    osc.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    osc.start();
+    osc.stop(now + 0.3);
+  } catch (e) {
+    console.error('Audio play failed', e);
+  }
+};
+
+export const playChimeArpeggio = () => {
+  try {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+
     // A bright, pleasant chime arpeggio (C major 7th feel)
     const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
     
@@ -129,6 +151,40 @@ export const playSuccessSound = () => {
 };
 
 export const playErrorSound = () => {
+  try {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    
+    // Create a slightly dissonant, low-pitched sound for error
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    
+    osc1.type = 'sawtooth';
+    osc1.frequency.setValueAtTime(150, now);
+    osc1.frequency.exponentialRampToValueAtTime(100, now + 0.2);
+    
+    osc2.type = 'sawtooth';
+    osc2.frequency.setValueAtTime(155, now); // Slightly detuned for dissonance
+    osc2.frequency.exponentialRampToValueAtTime(105, now + 0.2);
+    
+    gainNode.gain.setValueAtTime(0.1, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    
+    osc1.connect(gainNode);
+    osc2.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    
+    osc1.start();
+    osc2.start();
+    osc1.stop(now + 0.3);
+    osc2.stop(now + 0.3);
+  } catch (e) {
+    console.error('Audio play failed', e);
+  }
+};
+
+export const playSnareDrum = () => {
   try {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
