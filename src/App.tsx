@@ -2055,7 +2055,7 @@ export default function App() {
       )}
 
       <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
-        Rev 2.7 Designed by robin.yj.ye@gmail.com in Mar 2026
+        Rev 3.5 Designed by robin.yj.ye@gmail.com in Mar 2026
       </div>
     </div>
   );

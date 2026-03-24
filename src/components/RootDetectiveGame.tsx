@@ -3,6 +3,7 @@ import { WordState } from '../utils/word';
 import { BookOpen, Heart, Zap, Trophy, X, Play, RotateCcw, Home, CheckCircle2, XCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
+import { playSuccessSound, playErrorSound } from '../utils/audio';
 
 function cn(...classes: (string | undefined | null | false)[]) {
   return classes.filter(Boolean).join(' ');
@@ -165,6 +166,7 @@ export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGam
     const correct = option === currentItem.meaning;
 
     if (correct) {
+      playSuccessSound();
       const newStreak = streak + 1;
       setStreak(newStreak);
       setMaxStreak(Math.max(maxStreak, newStreak));
@@ -174,6 +176,7 @@ export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGam
         confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
       }
     } else {
+      playErrorSound();
       setStreak(0);
       const newLives = lives - 1;
       setLives(newLives);

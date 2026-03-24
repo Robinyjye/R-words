@@ -89,6 +89,7 @@ export const playComboSound = (combo: number) => {
 export const playSuccessSound = () => {
   try {
     const ctx = getAudioContext();
+    const now = ctx.currentTime;
     
     if (successBuffer) {
       const source = ctx.createBufferSource();
@@ -101,18 +102,79 @@ export const playSuccessSound = () => {
       return;
     }
 
-    // Fallback
+    // A bright, pleasant chime arpeggio (C major 7th feel)
+    const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+    
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const startTime = now + (i * 0.05);
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, startTime);
+      
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(0.1, startTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.4);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.start(startTime);
+      osc.stop(startTime + 0.4);
+    });
+  } catch (e) {
+    console.error('Audio play failed', e);
+  }
+};
+
+export const playErrorSound = () => {
+  try {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    
+    // 1. The "Thump" (Drum head)
     const osc = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(800, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1);
-    gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-    osc.connect(gainNode);
-    gainNode.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.3);
+    const oscGain = ctx.createGain();
+    
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(100, now);
+    osc.frequency.exponentialRampToValueAtTime(0.01, now + 0.1);
+    
+    oscGain.gain.setValueAtTime(0.3, now);
+    oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+    
+    osc.connect(oscGain);
+    oscGain.connect(ctx.destination);
+    
+    // 2. The "Snare" (Noise)
+    const bufferSize = ctx.sampleRate * 0.1; // 0.1 seconds of noise
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'bandpass';
+    noiseFilter.frequency.setValueAtTime(1000, now);
+    noiseFilter.Q.setValueAtTime(1, now);
+    
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.2, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+    
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    
+    osc.start(now);
+    osc.stop(now + 0.1);
+    noise.start(now);
+    noise.stop(now + 0.15);
   } catch (e) {
     console.error('Audio play failed', e);
   }
