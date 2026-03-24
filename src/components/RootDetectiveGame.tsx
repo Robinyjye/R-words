@@ -59,11 +59,11 @@ export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGam
         const key = `root:${text}`;
         if (activeRoots.has(key)) {
           if (!itemsMap.has(key)) {
-            itemsMap.set(key, { type: 'root', text, meaning: w.root_meaning, exampleWords: [{ word: w.word, translation: w.translation }] });
+            itemsMap.set(key, { type: 'root', text, meaning: w.root_meaning, exampleWords: [{ word: w.word, translation: w.meaning }] });
           } else {
             const item = itemsMap.get(key)!;
             if (!item.exampleWords.find(ex => ex.word === w.word)) {
-              item.exampleWords.push({ word: w.word, translation: w.translation });
+              item.exampleWords.push({ word: w.word, translation: w.meaning });
             }
           }
         }
@@ -73,11 +73,11 @@ export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGam
         const key = `prefix:${text}`;
         if (activeRoots.has(key)) {
           if (!itemsMap.has(key)) {
-            itemsMap.set(key, { type: 'prefix', text, meaning: w.prefix_meaning, exampleWords: [{ word: w.word, translation: w.translation }] });
+            itemsMap.set(key, { type: 'prefix', text, meaning: w.prefix_meaning, exampleWords: [{ word: w.word, translation: w.meaning }] });
           } else {
             const item = itemsMap.get(key)!;
             if (!item.exampleWords.find(ex => ex.word === w.word)) {
-              item.exampleWords.push({ word: w.word, translation: w.translation });
+              item.exampleWords.push({ word: w.word, translation: w.meaning });
             }
           }
         }
@@ -87,11 +87,11 @@ export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGam
         const key = `suffix:${text}`;
         if (activeRoots.has(key)) {
           if (!itemsMap.has(key)) {
-            itemsMap.set(key, { type: 'suffix', text, meaning: w.suffix_meaning, exampleWords: [{ word: w.word, translation: w.translation }] });
+            itemsMap.set(key, { type: 'suffix', text, meaning: w.suffix_meaning, exampleWords: [{ word: w.word, translation: w.meaning }] });
           } else {
             const item = itemsMap.get(key)!;
             if (!item.exampleWords.find(ex => ex.word === w.word)) {
-              item.exampleWords.push({ word: w.word, translation: w.translation });
+              item.exampleWords.push({ word: w.word, translation: w.meaning });
             }
           }
         }

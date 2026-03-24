@@ -11,7 +11,7 @@ import { playKeystrokeSound, playSuccessSound, speakWord, playComboSound } from 
 import { ImportModal } from './components/ImportModal';
 import { StatsModal } from './components/StatsModal';
 import { RootDetectiveGame } from './components/RootDetectiveGame';
-import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, CopyX, BarChart2, Search, BookOpen } from 'lucide-react';
+import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, Save, CopyX, BarChart2, Search, BookOpen } from 'lucide-react';
 import Papa from 'papaparse';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
@@ -941,11 +941,37 @@ export default function App() {
     showToast(`已导出全部 ${words.length} 个单词到本地。`);
   };
 
+  const handleBackup = () => {
+    if (words.length === 0) {
+      showToast("当前没有数据可以备份。");
+      return;
+    }
+
+    const backupData = {
+      words,
+      stats: JSON.parse(localStorage.getItem('ebbinghaus_stats') || '[]'),
+      exportDate: new Date().toISOString(),
+      version: '1.0'
+    };
+
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `词库全量备份_${new Date().toISOString().split('T')[0]}.json`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast(`已生成全量备份文件（含学习记录）。`);
+  };
+
   const handleImport = (importedWords: WordState[]) => {
     // Merge with existing words, avoiding duplicates by word text
     const existingWordsMap = new Map<string, WordState>(words.map(w => [w.word.toLowerCase(), w]));
     
     let newCount = 0;
+    let updatedCount = 0;
     for (const w of importedWords) {
       if (!existingWordsMap.has(w.word.toLowerCase())) {
         existingWordsMap.set(w.word.toLowerCase(), w);
@@ -953,17 +979,22 @@ export default function App() {
       } else {
         // Update existing word with new details if it was re-imported
         const existing = existingWordsMap.get(w.word.toLowerCase())!;
+        
+        // If the imported word has progress, we might want to use it
+        const useImportedProgress = (w.review_count || 0) > (existing.review_count || 0);
+
         existingWordsMap.set(w.word.toLowerCase(), { 
           ...existing, 
           ...w,
           id: existing.id, // Preserve the original ID
-          // Keep the existing progress if it was already practiced
-          review_count: existing.review_count,
-          last_review_time: existing.last_review_time,
-          is_completed_normal: existing.is_completed_normal,
-          is_completed_dictation: existing.is_completed_dictation,
+          review_count: useImportedProgress ? w.review_count : existing.review_count,
+          last_review_time: useImportedProgress ? w.last_review_time : existing.last_review_time,
+          is_completed_normal: useImportedProgress ? w.is_completed_normal : existing.is_completed_normal,
+          is_completed_dictation: useImportedProgress ? w.is_completed_dictation : existing.is_completed_dictation,
+          ebbinghaus_stage: useImportedProgress ? w.ebbinghaus_stage : (existing.ebbinghaus_stage || 0),
           has_error: existing.has_error
         });
+        updatedCount++;
       }
     }
 
@@ -984,7 +1015,6 @@ export default function App() {
     }
     
     setShowImport(false);
-    const updatedCount = importedWords.length - newCount;
     if (updatedCount > 0) {
       showToast(`导入成功，新增了 ${newCount} 个单词，更新了 ${updatedCount} 个单词。`);
     } else {
@@ -1144,9 +1174,16 @@ export default function App() {
                     <button 
                       onClick={handleExport}
                       className="p-1.5 text-zinc-500 hover:text-blue-400 hover:bg-zinc-900 rounded-md transition-colors"
-                      title="Download List as CSV"
+                      title="Download List as CSV (Words only)"
                     >
                       <Download size={14} />
+                    </button>
+                    <button 
+                      onClick={handleBackup}
+                      className="p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-zinc-900 rounded-md transition-colors"
+                      title="Full Backup as JSON (Includes learning records)"
+                    >
+                      <Save size={14} />
                     </button>
                     <button 
                       onClick={handleRemoveDuplicates}

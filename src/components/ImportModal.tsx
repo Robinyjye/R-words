@@ -38,7 +38,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
       reader.onload = (event) => {
         try {
           const json = JSON.parse(event.target?.result as string);
-          processImportedData(Array.isArray(json) ? json : [json], currentListName);
+          // Handle full backup format or direct array
+          if (json && typeof json === 'object' && !Array.isArray(json)) {
+            if (Array.isArray(json.words)) {
+              processImportedData(json.words, currentListName);
+            } else {
+              processImportedData([json], currentListName);
+            }
+          } else {
+            processImportedData(Array.isArray(json) ? json : [], currentListName);
+          }
         } catch (err) {
           setError('Invalid JSON file format.');
         }
@@ -107,7 +116,15 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
     // Try parsing as JSON first
     try {
       const json = JSON.parse(pasteContent);
-      processImportedData(Array.isArray(json) ? json : [json]);
+      if (json && typeof json === 'object' && !Array.isArray(json)) {
+        if (Array.isArray(json.words)) {
+          processImportedData(json.words);
+        } else {
+          processImportedData([json]);
+        }
+      } else {
+        processImportedData(Array.isArray(json) ? json : []);
+      }
       return;
     } catch (err) {}
 
@@ -149,14 +166,22 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
       let updatedCount = 0;
       
       for (const item of data) {
-        const wordStr = (item.word || item['单词'])?.toString().trim();
+        if (!item) continue;
+        
+        let wordStr = '';
+        if (typeof item === 'string') {
+          wordStr = item.trim();
+        } else if (typeof item === 'object') {
+          wordStr = (item.word || item['单词'] || item.term || item.name || '')?.toString().trim();
+        }
+        
         if (wordStr) {
           const lowerWord = wordStr.toLowerCase();
           const existingWord = existingWordMap.get(lowerWord);
           
-          const importedMeaning = item['释义'] || item.meaning || '';
-          const importedPhrase = item['词组'] || item.phrase || '';
-          const importedExample = item['例句'] || item.example_sentence || '';
+          const importedMeaning = typeof item === 'object' ? (item['释义'] || item.meaning || '') : '';
+          const importedPhrase = typeof item === 'object' ? (item['词组'] || item.phrase || '') : '';
+          const importedExample = typeof item === 'object' ? (item['例句'] || item.example_sentence || '') : '';
           
           if (existingWord && !shouldOverwrite) {
             skippedCount++;
@@ -167,26 +192,27 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
             updatedCount++;
           }
 
-          const isMastered = item.is_mastered === true || item['已学会'] === true || false;
+          const isMastered = typeof item === 'object' ? (item.is_mastered === true || item['已学会'] === true || false) : false;
           const wordObj: WordState = {
-            id: existingWord?.id || (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15)),
-            listName: isMastered ? 'Mastered Words' : (item['列表名称'] || item.listName || existingWord?.listName || finalListName),
+            id: (typeof item === 'object' && item.id) || existingWord?.id || (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15)),
+            listName: isMastered ? 'Mastered Words' : (typeof item === 'object' ? (item['列表名称'] || item.listName || existingWord?.listName || finalListName) : finalListName),
             word: wordStr,
-            part_of_speech: forceEnrich ? '' : (item['词性'] || item.part_of_speech || existingWord?.part_of_speech || ''),
-            phonetic: forceEnrich ? '' : (item['音标'] || item.phonetic || existingWord?.phonetic || ''),
-            prefix: forceEnrich ? '' : (item['前缀'] || item.prefix || existingWord?.prefix || ''),
-            prefix_meaning: forceEnrich ? '' : (item['前缀含义'] || item.prefix_meaning || existingWord?.prefix_meaning || ''),
-            root_core: forceEnrich ? '' : (item['词根核心'] || item.root_core || existingWord?.root_core || ''),
-            root_meaning: forceEnrich ? '' : (item['词根含义'] || item.root_meaning || existingWord?.root_meaning || ''),
-            suffix: forceEnrich ? '' : (item['后缀'] || item.suffix || existingWord?.suffix || ''),
-            suffix_meaning: forceEnrich ? '' : (item['后缀含义'] || item.suffix_meaning || existingWord?.suffix_meaning || ''),
+            part_of_speech: forceEnrich ? '' : (typeof item === 'object' ? (item['词性'] || item.part_of_speech || existingWord?.part_of_speech || '') : ''),
+            phonetic: forceEnrich ? '' : (typeof item === 'object' ? (item['音标'] || item.phonetic || existingWord?.phonetic || '') : ''),
+            prefix: forceEnrich ? '' : (typeof item === 'object' ? (item['前缀'] || item.prefix || existingWord?.prefix || '') : ''),
+            prefix_meaning: forceEnrich ? '' : (typeof item === 'object' ? (item['前缀含义'] || item.prefix_meaning || existingWord?.prefix_meaning || '') : ''),
+            root_core: forceEnrich ? '' : (typeof item === 'object' ? (item['词根核心'] || item.root_core || existingWord?.root_core || '') : ''),
+            root_meaning: forceEnrich ? '' : (typeof item === 'object' ? (item['词根含义'] || item.root_meaning || existingWord?.root_meaning || '') : ''),
+            suffix: forceEnrich ? '' : (typeof item === 'object' ? (item['后缀'] || item.suffix || existingWord?.suffix || '') : ''),
+            suffix_meaning: forceEnrich ? '' : (typeof item === 'object' ? (item['后缀含义'] || item.suffix_meaning || existingWord?.suffix_meaning || '') : ''),
             meaning: forceEnrich ? '' : (importedMeaning || existingWord?.meaning || ''),
             phrase: forceEnrich ? '' : (importedPhrase || existingWord?.phrase || ''),
             example_sentence: forceEnrich ? '' : (importedExample || existingWord?.example_sentence || ''),
-            review_count: existingWord?.review_count || 0,
-            last_review_time: existingWord?.last_review_time || null,
-            is_completed_normal: existingWord?.is_completed_normal || false,
-            is_completed_dictation: existingWord?.is_completed_dictation || false,
+            review_count: (typeof item === 'object' && item.review_count !== undefined) ? item.review_count : (existingWord?.review_count || 0),
+            last_review_time: (typeof item === 'object' && item.last_review_time !== undefined) ? item.last_review_time : (existingWord?.last_review_time || null),
+            is_completed_normal: (typeof item === 'object' && item.is_completed_normal !== undefined) ? item.is_completed_normal : (existingWord?.is_completed_normal || false),
+            is_completed_dictation: (typeof item === 'object' && item.is_completed_dictation !== undefined) ? item.is_completed_dictation : (existingWord?.is_completed_dictation || false),
+            ebbinghaus_stage: (typeof item === 'object' && item.ebbinghaus_stage !== undefined) ? item.ebbinghaus_stage : (existingWord?.ebbinghaus_stage || 0),
             is_mastered: isMastered || existingWord?.is_mastered || false,
           };
 
