@@ -638,16 +638,16 @@ export default function App() {
         return;
       }
 
-      // Handle Space to read phrase
+      // Handle Space to read example sentence
       if (e.key === ' ') {
         const targetWord = currentWord.word;
         // If the next character to type is NOT a space, trigger speech
         if (targetWord[input.length] !== ' ') {
           e.preventDefault();
-          if (currentWord.phrase) {
-            speakWord(currentWord.phrase);
-          } else if (currentWord.example_sentence) {
+          if (currentWord.example_sentence) {
             speakWord(currentWord.example_sentence);
+          } else if (currentWord.phrase) {
+            speakWord(currentWord.phrase);
           } else {
             speakWord(currentWord.word);
           }
@@ -655,11 +655,11 @@ export default function App() {
         }
       }
 
-      // Handle Shift to read example sentence
+      // Handle Shift to read phrase
       if (e.key === 'Shift') {
         e.preventDefault();
-        if (currentWord.example_sentence) {
-          speakWord(currentWord.example_sentence);
+        if (currentWord.phrase) {
+          speakWord(currentWord.phrase);
         } else {
           speakWord(currentWord.word);
         }
@@ -1582,7 +1582,7 @@ export default function App() {
                         speakWord(currentWord.phrase!);
                       }}
                       className="p-1 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
-                      title="Listen to phrase (Space / ArrowUp)"
+                      title="Listen to phrase (Shift / ArrowUp)"
                       tabIndex={-1}
                     >
                       <Volume2 size={14} />
@@ -1602,7 +1602,7 @@ export default function App() {
                         speakWord(currentWord.example_sentence!);
                       }}
                       className="mt-0.5 p-1 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none flex-shrink-0"
-                      title="Listen to example sentence (Shift / ArrowDown)"
+                      title="Listen to example sentence (Space / ArrowDown)"
                       tabIndex={-1}
                     >
                       <Volume2 size={14} />
@@ -2131,7 +2131,7 @@ export default function App() {
       )}
 
       <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
-        Rev 3.5 Designed by robin.yj.ye@gmail.com in Mar 2026
+        Rev 3.6 Designed by robin.yj.ye@gmail.com in Mar 2026
       </div>
     </div>
   );
