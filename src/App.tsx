@@ -178,8 +178,15 @@ export default function App() {
       // If word exists, switch to its list and set as current word
       setActiveList(existingWord.listName || 'Default List');
       setCurrentWord(existingWord);
-      // If it's already completed, we might want to see it anyway
-      if (isDictationMode ? existingWord.is_completed_dictation : existingWord.is_completed_normal) {
+      // If it's already completed (or not due in Ebbinghaus mode), we might want to see it anyway
+      let isCompleted = false;
+      if (isEbbinghausMode) {
+        isCompleted = !isWordDue(existingWord, isDictationMode, Date.now());
+      } else {
+        isCompleted = isDictationMode ? existingWord.is_completed_dictation : existingWord.is_completed_normal;
+      }
+      
+      if (isCompleted) {
         setIsViewingHistory(true);
       } else {
         setIsViewingHistory(false);
@@ -493,9 +500,16 @@ export default function App() {
     if (!isTransitioning) {
       if (filteredWords.length > 0) {
         // Prevent auto-jumping if the current word is still valid
-        const isCurrentWordStillValid = currentWordId && filteredWords.some(w => 
-          w.id === currentWordId && (isViewingHistory || (isDictationMode ? !w.is_completed_dictation : !w.is_completed_normal))
-        );
+        const isCurrentWordStillValid = currentWordId && filteredWords.some(w => {
+          if (w.id !== currentWordId) return false;
+          if (isViewingHistory) return true;
+          
+          if (isEbbinghausMode) {
+            return isWordDue(w, isDictationMode, Date.now());
+          }
+          
+          return isDictationMode ? !w.is_completed_dictation : !w.is_completed_normal;
+        });
 
         if (isCurrentWordStillValid) {
           return;
@@ -903,8 +917,7 @@ export default function App() {
       ];
       
       const notDue = filteredWords.filter(w => {
-        const isCompleted = isDictationMode ? w.is_completed_dictation : w.is_completed_normal;
-        if (isCompleted) return true;
+        if (w.is_mastered && activeList !== 'Mastered Words') return true;
         
         const stage = w.ebbinghaus_stage || 0;
         if (stage === 0) return false;
@@ -919,7 +932,7 @@ export default function App() {
 
     const completed = filteredWords.filter(w => isDictationMode ? w.is_completed_dictation : w.is_completed_normal).length;
     return Math.round((completed / filteredWords.length) * 100);
-  }, [filteredWords, isDictationMode, isEbbinghausMode]);
+  }, [filteredWords, isDictationMode, isEbbinghausMode, activeList]);
 
   const triggerFireworks = useCallback(() => {
     const duration = 5 * 1000;
@@ -2131,7 +2144,7 @@ export default function App() {
       )}
 
       <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
-        Rev 3.6 Designed by robin.yj.ye@gmail.com in Mar 2026
+        Rev 3.7 Designed by robin.yj.ye@gmail.com in Mar 2026
       </div>
     </div>
   );

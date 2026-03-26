@@ -41,9 +41,8 @@ export const isWordDue = (w: WordState, isDictationMode: boolean, now: number): 
   
   const lastReview = w.last_review_time || 0;
   const interval = EBBINGHAUS_INTERVALS[stage] || EBBINGHAUS_INTERVALS[EBBINGHAUS_INTERVALS.length - 1];
-  const isCompleted = isDictationMode ? w.is_completed_dictation : w.is_completed_normal;
   
-  return !isCompleted && (now - lastReview >= interval);
+  return (now - lastReview >= interval);
 };
 
 export const getNextWordToReview = (
@@ -66,8 +65,7 @@ export const getNextWordToReview = (
         if (stage === 0) return true;
         const lastReview = w.last_review_time || 0;
         const interval = EBBINGHAUS_INTERVALS[stage] || EBBINGHAUS_INTERVALS[EBBINGHAUS_INTERVALS.length - 1];
-        const isCompleted = isDictationMode ? w.is_completed_dictation : w.is_completed_normal;
-        return !isCompleted && (now - lastReview >= interval);
+        return (now - lastReview >= interval);
       }
       return isWordDue(w, isDictationMode, now);
     });
