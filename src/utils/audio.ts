@@ -245,3 +245,21 @@ export const speakWord = (word: string) => {
     window.speechSynthesis.speak(utterance);
   }
 };
+
+export const speakWordAndExample = (word: string, example?: string) => {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    
+    const utterance1 = new SpeechSynthesisUtterance(word);
+    utterance1.lang = 'en-US';
+    utterance1.rate = 0.9;
+    window.speechSynthesis.speak(utterance1);
+    
+    if (example) {
+      const utterance2 = new SpeechSynthesisUtterance(example);
+      utterance2.lang = 'en-US';
+      utterance2.rate = 0.9;
+      window.speechSynthesis.speak(utterance2);
+    }
+  }
+};

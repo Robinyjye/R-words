@@ -74,8 +74,19 @@ export const getNextWordToReview = (
       return dueWords.sort((a, b) => {
         const stageA = a.ebbinghaus_stage || 0;
         const stageB = b.ebbinghaus_stage || 0;
-        if (stageA !== stageB) return stageA - stageB;
-        return (a.last_review_time || 0) - (b.last_review_time || 0);
+        
+        // Prioritize reviews (stage > 0) over new words (stage === 0)
+        if (stageA > 0 && stageB === 0) return -1;
+        if (stageA === 0 && stageB > 0) return 1;
+        
+        // If both are reviews, prioritize lower stages (shorter intervals)
+        if (stageA > 0 && stageB > 0) {
+          if (stageA !== stageB) return stageA - stageB;
+          return (a.last_review_time || 0) - (b.last_review_time || 0);
+        }
+        
+        // If both are new words, keep original order
+        return 0;
       })[0];
     }
     return null;

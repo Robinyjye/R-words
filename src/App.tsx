@@ -5,9 +5,9 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { WordState } from './utils/word';
-import { loadWords, saveWords, getNextWordToReview, isWordDue } from './utils/storage';
+import { loadWords, saveWords, getNextWordToReview, isWordDue, EBBINGHAUS_INTERVALS } from './utils/storage';
 import { enrichWords } from './utils/gemini';
-import { playKeystrokeSound, playSuccessSound, speakWord, playComboSound } from './utils/audio';
+import { playKeystrokeSound, playSuccessSound, speakWord, speakWordAndExample, playComboSound } from './utils/audio';
 import { ImportModal } from './components/ImportModal';
 import { StatsModal } from './components/StatsModal';
 import { RootDetectiveGame } from './components/RootDetectiveGame';
@@ -426,7 +426,7 @@ export default function App() {
 
         setShowCombo(true);
         playComboSound(newCombo);
-        speakWord(gameWords[currentGameIdx].word);
+        speakWordAndExample(gameWords[currentGameIdx].word, gameWords[currentGameIdx].example_sentence);
 
         // Update stats and word progress
         const now = Date.now();
@@ -533,7 +533,7 @@ export default function App() {
             setInput('');
             setIsViewingHistory(false);
             // Speak the word when it appears
-            speakWord(next.word);
+            speakWordAndExample(next.word, next.example_sentence);
           }
           setCurrentWord(next);
         } else {
@@ -560,7 +560,7 @@ export default function App() {
       setIsViewingHistory(true);
       setCurrentWord(prevWord);
       setInput('');
-      speakWord(prevWord.word);
+      speakWordAndExample(prevWord.word, prevWord.example_sentence);
     }
   }, [history, filteredWords]);
 
@@ -652,15 +652,13 @@ export default function App() {
         return;
       }
 
-      // Handle Space to read example sentence
+      // Handle Space to read phrase
       if (e.key === ' ') {
         const targetWord = currentWord.word;
         // If the next character to type is NOT a space, trigger speech
         if (targetWord[input.length] !== ' ') {
           e.preventDefault();
-          if (currentWord.example_sentence) {
-            speakWord(currentWord.example_sentence);
-          } else if (currentWord.phrase) {
+          if (currentWord.phrase) {
             speakWord(currentWord.phrase);
           } else {
             speakWord(currentWord.word);
@@ -669,10 +667,12 @@ export default function App() {
         }
       }
 
-      // Handle Shift to read phrase
+      // Handle Shift to read example sentence
       if (e.key === 'Shift') {
         e.preventDefault();
-        if (currentWord.phrase) {
+        if (currentWord.example_sentence) {
+          speakWord(currentWord.example_sentence);
+        } else if (currentWord.phrase) {
           speakWord(currentWord.phrase);
         } else {
           speakWord(currentWord.word);
@@ -683,7 +683,7 @@ export default function App() {
       // Handle PageDown to read word
       if (e.key === 'PageDown') {
         e.preventDefault();
-        speakWord(currentWord.word);
+        speakWordAndExample(currentWord.word, currentWord.example_sentence);
         return;
       }
 
@@ -754,7 +754,7 @@ export default function App() {
       is_completed_dictation: isDictationMode ? true : currentWord.is_completed_dictation,
       ebbinghaus_stage: isErrorThisTime 
         ? Math.max(0, (currentWord.ebbinghaus_stage || 0) - 1) 
-        : (currentWord.ebbinghaus_stage || 0) + 1,
+        : Math.min(9, (currentWord.ebbinghaus_stage || 0) + 1),
     };
 
     const updatedWords = words.map(w => w.id === currentWord.id ? updatedWord : w);
@@ -909,12 +909,6 @@ export default function App() {
     if (isEbbinghausMode) {
       // In Ebbinghaus mode, progress is how many words are NOT due for review
       const now = Date.now();
-      const EBBINGHAUS_INTERVALS = [
-        0, 5 * 60 * 1000, 30 * 60 * 1000, 12 * 60 * 60 * 1000, 
-        24 * 60 * 60 * 1000, 2 * 24 * 60 * 60 * 1000, 4 * 24 * 60 * 60 * 1000, 
-        7 * 24 * 60 * 60 * 1000, 15 * 24 * 60 * 60 * 1000,
-        30 * 24 * 60 * 60 * 1000
-      ];
       
       const notDue = filteredWords.filter(w => {
         if (w.is_mastered && activeList !== 'Mastered Words') return true;
@@ -1469,7 +1463,7 @@ export default function App() {
                         e.preventDefault();
                         if (!isHinted) {
                           setHasError(true);
-                          speakWord(currentWord.word);
+                          speakWordAndExample(currentWord.word, currentWord.example_sentence);
                         }
                         setIsHinted(!isHinted);
                       }}
@@ -1553,7 +1547,7 @@ export default function App() {
                   <button
                     onClick={(e) => {
                       e.preventDefault();
-                      speakWord(currentWord.word);
+                      speakWordAndExample(currentWord.word, currentWord.example_sentence);
                     }}
                     className="p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
                     title="Listen to pronunciation (PageDown)"
@@ -1595,7 +1589,7 @@ export default function App() {
                         speakWord(currentWord.phrase!);
                       }}
                       className="p-1 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
-                      title="Listen to phrase (Shift / ArrowUp)"
+                      title="Listen to phrase (Space / ArrowUp)"
                       tabIndex={-1}
                     >
                       <Volume2 size={14} />
@@ -1615,7 +1609,7 @@ export default function App() {
                         speakWord(currentWord.example_sentence!);
                       }}
                       className="mt-0.5 p-1 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none flex-shrink-0"
-                      title="Listen to example sentence (Space / ArrowDown)"
+                      title="Listen to example sentence (Shift / ArrowDown)"
                       tabIndex={-1}
                     >
                       <Volume2 size={14} />
