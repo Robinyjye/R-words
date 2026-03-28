@@ -152,6 +152,13 @@ export default function App() {
 
   // Game State
   const [isGameMode, setIsGameMode] = useState(false);
+  const [playedGameWordIds, setPlayedGameWordIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('playedGameWordIds');
+      if (stored) return new Set(JSON.parse(stored));
+    } catch (e) {}
+    return new Set();
+  });
   const [gameWords, setGameWords] = useState<WordState[]>([]);
   const [currentGameIdx, setCurrentGameIdx] = useState(0);
   const [gameInput, setGameInput] = useState<string[]>([]); // Array of characters for the blanks
@@ -364,22 +371,6 @@ export default function App() {
     }
   }, [combo, gameStatus]);
 
-  const startGame = useCallback(() => {
-    if (filteredWords.length === 0) {
-      showToast("当前列表没有单词，无法开始游戏。");
-      return;
-    }
-    // Shuffle and pick up to 20 words
-    const shuffled = [...filteredWords].sort(() => Math.random() - 0.5).slice(0, 20);
-    setGameWords(shuffled);
-    setCurrentGameIdx(0);
-    setCombo(0);
-    setMaxCombo(0);
-    setIsGameMode(true);
-    setGameStatus('playing');
-    setupWordGame(shuffled[0]);
-  }, [filteredWords]);
-
   const setupWordGame = useCallback((wordObj: WordState) => {
     const word = wordObj.word;
     const len = word.length;
@@ -390,7 +381,7 @@ export default function App() {
     
     // Determine how many blanks based on word length
     // At least 2 blanks, or all characters if word is very short
-    let numBlanks = Math.max(2, Math.floor(len * 0.35));
+    let numBlanks = Math.max(2, Math.ceil(len * 0.35));
     numBlanks = Math.min(numBlanks, validIndices.length);
     
     const shuffledIndices = [...validIndices].sort(() => Math.random() - 0.5);
@@ -400,6 +391,46 @@ export default function App() {
     setGameInput(new Array(selectedBlanks.length).fill(''));
     setGameStatus('playing');
   }, []);
+
+  const startGame = useCallback(() => {
+    if (filteredWords.length === 0) {
+      showToast("当前列表没有单词，无法开始游戏。");
+      return;
+    }
+
+    let availableWords = filteredWords.filter(w => !playedGameWordIds.has(w.id));
+    
+    if (availableWords.length === 0) {
+      showToast("列表中的单词已全部复习完毕，开启新一轮！");
+      availableWords = [...filteredWords];
+      
+      const currentListIds = new Set(filteredWords.map(w => w.id));
+      setPlayedGameWordIds(prev => {
+        const next = new Set(prev);
+        currentListIds.forEach(id => next.delete(id));
+        localStorage.setItem('playedGameWordIds', JSON.stringify(Array.from(next)));
+        return next;
+      });
+    }
+
+    // Shuffle and pick up to 20 words
+    const shuffled = [...availableWords].sort(() => Math.random() - 0.5).slice(0, 20);
+    
+    setPlayedGameWordIds(prev => {
+      const next = new Set(prev);
+      shuffled.forEach(w => next.add(w.id));
+      localStorage.setItem('playedGameWordIds', JSON.stringify(Array.from(next)));
+      return next;
+    });
+
+    setGameWords(shuffled);
+    setCurrentGameIdx(0);
+    setCombo(0);
+    setMaxCombo(0);
+    setIsGameMode(true);
+    setGameStatus('playing');
+    setupWordGame(shuffled[0]);
+  }, [filteredWords, playedGameWordIds, setupWordGame]);
 
   const handleGameInput = useCallback((char: string) => {
     if (gameStatus !== 'playing') return;
