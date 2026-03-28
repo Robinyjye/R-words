@@ -16,6 +16,7 @@ interface RootDetectiveGameProps {
 }
 
 type RootItem = {
+  key: string;
   type: 'root' | 'prefix' | 'suffix';
   text: string;
   meaning: string;
@@ -26,6 +27,14 @@ type GameState = 'home' | 'quiz' | 'gameover';
 
 export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGameProps) {
   const [gameState, setGameState] = useState<GameState>('home');
+  const [playedRootKeys, setPlayedRootKeys] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('playedRootKeys');
+      if (stored) return new Set(JSON.parse(stored));
+    } catch (e) {}
+    return new Set();
+  });
+  const [sessionRoots, setSessionRoots] = useState<RootItem[]>([]);
   const [lives, setLives] = useState(3);
   const [streak, setStreak] = useState(0);
   const [maxStreak, setMaxStreak] = useState(0);
@@ -60,7 +69,7 @@ export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGam
         const key = `root:${text}`;
         if (activeRoots.has(key)) {
           if (!itemsMap.has(key)) {
-            itemsMap.set(key, { type: 'root', text, meaning: w.root_meaning, exampleWords: [{ word: w.word, translation: w.meaning }] });
+            itemsMap.set(key, { key, type: 'root', text, meaning: w.root_meaning, exampleWords: [{ word: w.word, translation: w.meaning }] });
           } else {
             const item = itemsMap.get(key)!;
             if (!item.exampleWords.find(ex => ex.word === w.word)) {
@@ -74,7 +83,7 @@ export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGam
         const key = `prefix:${text}`;
         if (activeRoots.has(key)) {
           if (!itemsMap.has(key)) {
-            itemsMap.set(key, { type: 'prefix', text, meaning: w.prefix_meaning, exampleWords: [{ word: w.word, translation: w.meaning }] });
+            itemsMap.set(key, { key, type: 'prefix', text, meaning: w.prefix_meaning, exampleWords: [{ word: w.word, translation: w.meaning }] });
           } else {
             const item = itemsMap.get(key)!;
             if (!item.exampleWords.find(ex => ex.word === w.word)) {
@@ -88,7 +97,7 @@ export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGam
         const key = `suffix:${text}`;
         if (activeRoots.has(key)) {
           if (!itemsMap.has(key)) {
-            itemsMap.set(key, { type: 'suffix', text, meaning: w.suffix_meaning, exampleWords: [{ word: w.word, translation: w.meaning }] });
+            itemsMap.set(key, { key, type: 'suffix', text, meaning: w.suffix_meaning, exampleWords: [{ word: w.word, translation: w.meaning }] });
           } else {
             const item = itemsMap.get(key)!;
             if (!item.exampleWords.find(ex => ex.word === w.word)) {
@@ -117,13 +126,8 @@ export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGam
     return Array.from(meanings);
   }, [allWords]);
 
-  const generateQuestion = useCallback(() => {
-    if (rootItems.length < 4) {
-      return false;
-    }
-
-    const randomItem = rootItems[Math.floor(Math.random() * rootItems.length)];
-    const correctMeaning = randomItem.meaning;
+  const generateQuestion = useCallback((item: RootItem) => {
+    const correctMeaning = item.meaning;
 
     // Get 3 random distractors
     const distractors = allMeanings.filter(m => m !== correctMeaning);
@@ -140,22 +144,45 @@ export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGam
 
     const finalOptions = [correctMeaning, ...shuffledDistractors].sort(() => Math.random() - 0.5);
 
-    setCurrentItem(randomItem);
+    setCurrentItem(item);
     setOptions(finalOptions);
     setSelectedOption(null);
-    return true;
-  }, [rootItems, allMeanings]);
-
-  const TOTAL_QUESTIONS = Math.min(20, rootItems.length);
+  }, [allMeanings]);
 
   const startGame = () => {
     if (rootItems.length < 4) return;
+
+    let availableRoots = rootItems.filter(item => !playedRootKeys.has(item.key));
+    
+    if (availableRoots.length === 0) {
+      alert("列表中的词根已全部复习完毕，开启新一轮！");
+      availableRoots = [...rootItems];
+      
+      const currentListKeys = new Set(rootItems.map(item => item.key));
+      setPlayedRootKeys(prev => {
+        const next = new Set(prev);
+        currentListKeys.forEach(k => next.delete(k));
+        localStorage.setItem('playedRootKeys', JSON.stringify(Array.from(next)));
+        return next;
+      });
+    }
+
+    const shuffled = [...availableRoots].sort(() => Math.random() - 0.5).slice(0, 20);
+    
+    setPlayedRootKeys(prev => {
+      const next = new Set(prev);
+      shuffled.forEach(item => next.add(item.key));
+      localStorage.setItem('playedRootKeys', JSON.stringify(Array.from(next)));
+      return next;
+    });
+
+    setSessionRoots(shuffled);
     setScore(0);
     setLives(3);
     setStreak(0);
     setMaxStreak(0);
     setQuestionCount(0);
-    generateQuestion();
+    generateQuestion(shuffled[0]);
     setGameState('quiz');
   };
 
@@ -188,12 +215,12 @@ export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGam
 
     setTimeout(() => {
       const nextCount = questionCount + 1;
-      if (nextCount >= TOTAL_QUESTIONS) {
+      if (nextCount >= sessionRoots.length) {
         setQuestionCount(nextCount);
         setGameState('gameover');
       } else {
         setQuestionCount(nextCount);
-        generateQuestion();
+        generateQuestion(sessionRoots[nextCount]);
       }
     }, 1500);
   };
@@ -307,7 +334,7 @@ export function RootDetectiveGame({ words, allWords, onClose }: RootDetectiveGam
                   <div className="absolute top-0 left-0 w-full h-1 bg-slate-100">
                     <motion.div 
                       className="h-full bg-indigo-500"
-                      animate={{ width: `${((questionCount + (selectedOption ? 1 : 0)) / TOTAL_QUESTIONS) * 100}%` }}
+                      animate={{ width: `${((questionCount + (selectedOption ? 1 : 0)) / sessionRoots.length) * 100}%` }}
                       transition={{ duration: 0.5, ease: "easeInOut" }}
                     />
                   </div>
