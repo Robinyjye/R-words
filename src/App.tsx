@@ -84,14 +84,50 @@ const renderHighlightedWord = (wordObj: WordState) => {
       currentSpan += word[i];
     } else {
       if (currentSpan) {
-        spans.push(<span key={i} className={currentColor || undefined}>{currentSpan}</span>);
+        let meaning = null;
+        if (currentColor === 'text-emerald-400' && wordObj.root_meaning) {
+          meaning = wordObj.root_meaning;
+        } else if (currentColor === 'text-blue-400' && wordObj.prefix_meaning) {
+          meaning = wordObj.prefix_meaning;
+        } else if (currentColor === 'text-amber-400' && wordObj.suffix_meaning) {
+          meaning = wordObj.suffix_meaning;
+        }
+
+        spans.push(
+          <span key={i} className={`${currentColor || ''} relative inline-block`}>
+            {currentSpan}
+            {meaning && (
+              <span className="absolute left-1/2 -translate-x-1/2 top-full mt-2 text-sm text-zinc-400 whitespace-nowrap font-sans font-normal tracking-normal pointer-events-none select-none">
+                {meaning}
+              </span>
+            )}
+          </span>
+        );
       }
       currentSpan = word[i];
       currentColor = colors[i];
     }
   }
   if (currentSpan) {
-    spans.push(<span key="last" className={currentColor || undefined}>{currentSpan}</span>);
+    let meaning = null;
+    if (currentColor === 'text-emerald-400' && wordObj.root_meaning) {
+      meaning = wordObj.root_meaning;
+    } else if (currentColor === 'text-blue-400' && wordObj.prefix_meaning) {
+      meaning = wordObj.prefix_meaning;
+    } else if (currentColor === 'text-amber-400' && wordObj.suffix_meaning) {
+      meaning = wordObj.suffix_meaning;
+    }
+
+    spans.push(
+      <span key="last" className={`${currentColor || ''} relative inline-block`}>
+        {currentSpan}
+        {meaning && (
+          <span className="absolute left-1/2 -translate-x-1/2 top-full mt-2 text-sm text-zinc-400 whitespace-nowrap font-sans font-normal tracking-normal pointer-events-none select-none">
+            {meaning}
+          </span>
+        )}
+      </span>
+    );
   }
 
   return <>{spans}</>;
@@ -1595,7 +1631,7 @@ export default function App() {
               </div>
 
               {/* Word Actions */}
-              <div className="flex justify-center items-center space-x-4 mb-8">
+              <div className="flex justify-center items-center space-x-4 mt-8 mb-8">
                 {!currentWord.is_mastered && activeList !== 'Mastered Words' && (
                   <button
                     onClick={(e) => {
