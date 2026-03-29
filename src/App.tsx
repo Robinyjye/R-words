@@ -25,6 +25,78 @@ interface Stats {
   daily: { [date: string]: DailyStat };
 }
 
+const renderHighlightedWord = (wordObj: WordState) => {
+  const word = wordObj.word;
+  const p = (wordObj.prefix || '').replace(/[^a-zA-Z]/g, '').toLowerCase();
+  const r = (wordObj.root_core || '').replace(/[^a-zA-Z]/g, '').toLowerCase();
+  const s = (wordObj.suffix || '').replace(/[^a-zA-Z]/g, '').toLowerCase();
+
+  if (!p && !r && !s) return word;
+
+  const colors = new Array(word.length).fill('');
+  const lowerWord = word.toLowerCase();
+
+  // 1. Prefix
+  if (p) {
+    if (lowerWord.startsWith(p)) {
+      for (let i = 0; i < p.length; i++) colors[i] = 'text-blue-400';
+    } else {
+      const idx = lowerWord.indexOf(p);
+      if (idx !== -1) {
+        for (let i = idx; i < idx + p.length; i++) colors[i] = 'text-blue-400';
+      }
+    }
+  }
+
+  // 2. Suffix
+  if (s) {
+    if (lowerWord.endsWith(s)) {
+      for (let i = word.length - s.length; i < word.length; i++) colors[i] = 'text-amber-400';
+    } else {
+      const idx = lowerWord.lastIndexOf(s);
+      if (idx !== -1) {
+        for (let i = idx; i < idx + s.length; i++) colors[i] = 'text-amber-400';
+      }
+    }
+  }
+
+  // 3. Root
+  if (r) {
+    let startSearch = 0;
+    if (p && lowerWord.startsWith(p)) startSearch = p.length;
+    
+    let idx = lowerWord.indexOf(r, startSearch);
+    if (idx === -1) idx = lowerWord.indexOf(r);
+    
+    if (idx !== -1) {
+      for (let i = idx; i < idx + r.length; i++) {
+        colors[i] = 'text-emerald-400';
+      }
+    }
+  }
+
+  const spans = [];
+  let currentSpan = '';
+  let currentColor = colors[0];
+
+  for (let i = 0; i < word.length; i++) {
+    if (colors[i] === currentColor) {
+      currentSpan += word[i];
+    } else {
+      if (currentSpan) {
+        spans.push(<span key={i} className={currentColor || undefined}>{currentSpan}</span>);
+      }
+      currentSpan = word[i];
+      currentColor = colors[i];
+    }
+  }
+  if (currentSpan) {
+    spans.push(<span key="last" className={currentColor || undefined}>{currentSpan}</span>);
+  }
+
+  return <>{spans}</>;
+};
+
 export default function App() {
   const [words, setWords] = useState<WordState[]>([]);
   const masteredCount = words.filter(w => w.is_mastered).length;
@@ -1512,12 +1584,12 @@ export default function App() {
                       }}
                       className="absolute text-4xl md:text-5xl font-medium tracking-tight text-white flex items-center justify-center pointer-events-none whitespace-nowrap"
                     >
-                      {currentWord.word}
+                      {renderHighlightedWord(currentWord)}
                     </motion.h1>
                   </div>
                 ) : (
                   <h1 className="text-5xl md:text-6xl font-medium tracking-tight text-white">
-                    {currentWord.word}
+                    {renderHighlightedWord(currentWord)}
                   </h1>
                 )}
               </div>
@@ -2169,7 +2241,7 @@ export default function App() {
       )}
 
       <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
-        Rev 3.7 Designed by robin.yj.ye@gmail.com in Mar 2026
+        Rev 3.8 Designed by robin.yj.ye@gmail.com in Mar 2026
       </div>
     </div>
   );
