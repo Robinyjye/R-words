@@ -93,7 +93,7 @@ const renderHighlightedWord = (wordObj: WordState) => {
           <span key={i} className={`${currentColor || ''} relative inline-block`}>
             {currentSpan}
             {meaning && (
-              <span className="absolute left-1/2 -translate-x-1/2 top-full mt-2 text-sm text-zinc-400 text-center w-max max-w-[180px] leading-tight font-sans font-normal tracking-normal pointer-events-none select-none">
+              <span className="absolute left-1/2 -translate-x-1/2 top-full mt-2 text-sm text-zinc-400 whitespace-nowrap font-sans font-normal tracking-normal pointer-events-none select-none">
                 {meaning}
               </span>
             )}
@@ -114,7 +114,7 @@ const renderHighlightedWord = (wordObj: WordState) => {
       <span key="last" className={`${currentColor || ''} relative inline-block`}>
         {currentSpan}
         {meaning && (
-          <span className="absolute left-1/2 -translate-x-1/2 top-full mt-2 text-sm text-zinc-400 text-center w-max max-w-[180px] leading-tight font-sans font-normal tracking-normal pointer-events-none select-none">
+          <span className="absolute left-1/2 -translate-x-1/2 top-full mt-2 text-sm text-zinc-400 whitespace-nowrap font-sans font-normal tracking-normal pointer-events-none select-none">
             {meaning}
           </span>
         )}
