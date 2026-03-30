@@ -87,10 +87,6 @@ const renderHighlightedWord = (wordObj: WordState) => {
         let meaning = null;
         if (currentColor === 'text-emerald-400' && wordObj.root_meaning) {
           meaning = wordObj.root_meaning;
-        } else if (currentColor === 'text-blue-400' && wordObj.prefix_meaning) {
-          meaning = wordObj.prefix_meaning;
-        } else if (currentColor === 'text-amber-400' && wordObj.suffix_meaning) {
-          meaning = wordObj.suffix_meaning;
         }
 
         spans.push(
@@ -112,10 +108,6 @@ const renderHighlightedWord = (wordObj: WordState) => {
     let meaning = null;
     if (currentColor === 'text-emerald-400' && wordObj.root_meaning) {
       meaning = wordObj.root_meaning;
-    } else if (currentColor === 'text-blue-400' && wordObj.prefix_meaning) {
-      meaning = wordObj.prefix_meaning;
-    } else if (currentColor === 'text-amber-400' && wordObj.suffix_meaning) {
-      meaning = wordObj.suffix_meaning;
     }
 
     spans.push(
