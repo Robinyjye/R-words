@@ -1445,7 +1445,7 @@ export default function App() {
                       handleSearch();
                     }
                   }}
-                  placeholder="Search or add word..."
+                  placeholder="Search or add word"
                   className="w-full bg-zinc-900/50 border border-zinc-500 rounded-full py-1.5 pl-4 pr-10 text-sm text-zinc-300 focus:outline-none focus:border-white focus:bg-zinc-900 transition-all"
                 />
                 <button
