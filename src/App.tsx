@@ -605,6 +605,17 @@ export default function App() {
     } else {
       // Wrong
       setCombo(0);
+      
+      // Reset ebbinghaus_stage to 0 so they have to practice it more, and mark as error
+      const currentWord = gameWords[currentGameIdx];
+      const updatedWords = words.map(w => 
+        w.id === currentWord.id 
+          ? { ...w, ebbinghaus_stage: 0, has_error: true } 
+          : w
+      );
+      setWords(updatedWords);
+      saveWords(updatedWords);
+
       // Visual feedback for wrong? Maybe shake?
       playKeystrokeSound(char); // Or a different sound? User asked for mechanical keyboard sound for typing.
     }
@@ -735,7 +746,7 @@ export default function App() {
   // Handle keyboard input
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!currentWord || isTransitioning || showImport || listToRename || listToDelete) return;
+      if (!currentWord || isTransitioning || showImport || listToRename || listToDelete || isGameMode) return;
 
       // Don't handle keys if user is typing in an input/select
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
@@ -837,7 +848,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip]);
+  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip, isGameMode]);
 
   // Check for completion
   useEffect(() => {
