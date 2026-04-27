@@ -1698,10 +1698,25 @@ export default function App() {
                     <Volume2 size={16} />
                   </button>
                 </div>
-                {currentWord.meaning && (
+                {currentWord.meaning ? (
                   <p className="text-xl text-zinc-300 font-medium">
                     {currentWord.meaning}
                   </p>
+                ) : (
+                  <div className="flex flex-col items-center justify-center space-y-2 mt-2">
+                    <p className="text-sm text-zinc-500">缺少单词详情</p>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setEditingWordData(currentWord);
+                        setIsEditingWord(true);
+                      }}
+                      className="text-xs flex items-center space-x-1 text-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/20 px-3 py-1.5 rounded-full transition-colors"
+                    >
+                      <Sparkles size={12} className="mr-1" />
+                      点击编辑并生成
+                    </button>
+                  </div>
                 )}
                 {(currentWord.prefix || currentWord.root_core || currentWord.suffix) ? (
                   <div className="mt-4 font-mono text-zinc-400 text-sm flex flex-wrap justify-center items-center gap-1">
