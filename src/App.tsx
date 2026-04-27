@@ -1011,7 +1011,8 @@ export default function App() {
         showToast(`已通过 AI 更新单词 "${editingWordData.word}" 的详细信息`);
       }
     } catch (error) {
-      showToast("AI 更新失败，请检查网络或 API Key");
+      console.error(error);
+      showToast(`AI 更新失败: ${error instanceof Error ? error.message : "请检查网络或 API Key"}`);
     } finally {
       setIsEnrichingEdit(false);
     }

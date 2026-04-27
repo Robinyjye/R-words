@@ -41,7 +41,7 @@ Important:
     }
     const aiInstance = getAI();
     const response = await aiInstance.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -71,9 +71,17 @@ Important:
     
     const text = response.text;
     if (!text) return [];
-    return JSON.parse(text);
-  } catch (error) {
+    try {
+      return JSON.parse(text);
+    } catch (e: any) {
+      console.error("JSON parse error on AI response:", text);
+      throw new Error("AI returned invalid data format: " + text.substring(0, 50));
+    }
+  } catch (error: any) {
     console.error("Error enriching words:", error);
-    throw new Error("Failed to fetch word details from AI.");
+    if (error.message === "API_KEY_MISSING") {
+      throw new Error("API Key 缺失，请在应用中设置或使用正常环境");
+    }
+    throw error;
   }
 }
