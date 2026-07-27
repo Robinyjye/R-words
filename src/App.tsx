@@ -1755,8 +1755,8 @@ export default function App() {
                   </div>
                 )}
                 {currentWord.example_sentence && (
-                  <div className="flex items-start justify-center space-x-2 mt-4 max-w-lg">
-                    <p className="text-sm text-zinc-300 italic leading-relaxed">
+                  <div className="flex items-start justify-center space-x-2 mt-4 max-w-xl">
+                    <p className="text-lg text-zinc-300 italic leading-relaxed">
                       "{isDictationMode 
                         ? currentWord.example_sentence.replace(new RegExp(currentWord.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '___')
                         : currentWord.example_sentence}"
@@ -1766,11 +1766,11 @@ export default function App() {
                         e.preventDefault();
                         speakWord(currentWord.example_sentence!);
                       }}
-                      className="mt-0.5 p-1 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none flex-shrink-0"
+                      className="mt-1 p-1 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none flex-shrink-0"
                       title="Listen to example sentence (Shift / ArrowDown)"
                       tabIndex={-1}
                     >
-                      <Volume2 size={14} />
+                      <Volume2 size={18} />
                     </button>
                   </div>
                 )}
