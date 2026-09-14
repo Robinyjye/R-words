@@ -85,7 +85,9 @@ export const getNextWordToReview = (
           return (a.last_review_time || 0) - (b.last_review_time || 0);
         }
         
-        // If both are new words, keep original order
+        // If both are new words (stage === 0), prioritize error words
+        if (a.has_error && !b.has_error) return -1;
+        if (!a.has_error && b.has_error) return 1;
         return 0;
       })[0];
     }

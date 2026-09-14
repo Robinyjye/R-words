@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { WordState } from './utils/word';
 import { loadWords, saveWords, getNextWordToReview, isWordDue, EBBINGHAUS_INTERVALS } from './utils/storage';
 import { enrichWords } from './utils/gemini';
@@ -133,6 +133,10 @@ export default function App() {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const showToast = useCallback((msg: string) => {
+    setImportMessage(msg);
+    setTimeout(() => setImportMessage(null), 3000);
+  }, []);
   const [isDictationMode, setIsDictationMode] = useState(() => {
     return localStorage.getItem('ebbinghaus_dictation_mode') === 'true';
   });
@@ -259,6 +263,14 @@ export default function App() {
     } catch (e) {}
     return new Set();
   });
+  const [gameRepeatWords, setGameRepeatWords] = useState<Record<string, number>>(() => {
+    try {
+      const stored = localStorage.getItem('ebbinghaus_game_repeat_words');
+      if (stored) return JSON.parse(stored);
+    } catch (e) {}
+    return {};
+  });
+  const peekedThisWordRef = useRef<Set<string>>(new Set());
   const [gameWords, setGameWords] = useState<WordState[]>([]);
   const [currentGameIdx, setCurrentGameIdx] = useState(0);
   const [gameInput, setGameInput] = useState<string[]>([]); // Array of characters for the blanks
@@ -498,12 +510,15 @@ export default function App() {
       return;
     }
 
-    let availableWords = filteredWords.filter(w => !playedGameWordIds.has(w.id));
+    // 1. Mandatory repeat words that belong to the current list
+    const repeatWords = filteredWords.filter(w => (gameRepeatWords[w.id] || 0) > 0);
+    const repeatWordIds = new Set(repeatWords.map(w => w.id));
+
+    // 2. Normal available words not yet played and not in repeat list
+    let availableWords = filteredWords.filter(w => !repeatWordIds.has(w.id) && !playedGameWordIds.has(w.id));
     
-    if (availableWords.length === 0) {
-      showToast("列表中的单词已全部复习完毕，开启新一轮！");
-      availableWords = [...filteredWords];
-      
+    // If all non-repeat words have been played and we still need words
+    if (availableWords.length === 0 && repeatWords.length < 20) {
       const currentListIds = new Set(filteredWords.map(w => w.id));
       setPlayedGameWordIds(prev => {
         const next = new Set(prev);
@@ -511,11 +526,20 @@ export default function App() {
         localStorage.setItem('playedGameWordIds', JSON.stringify(Array.from(next)));
         return next;
       });
+      availableWords = filteredWords.filter(w => !repeatWordIds.has(w.id));
+      if (availableWords.length > 0) {
+        showToast("列表中的单词已全部复习完毕，开启新一轮！");
+      }
     }
 
-    // Shuffle and pick up to 20 words
-    const shuffled = [...availableWords].sort(() => Math.random() - 0.5).slice(0, 20);
-    
+    // Pick additional words up to 20 total
+    const slotsNeeded = Math.max(0, 20 - repeatWords.length);
+    const chosenAdditional = [...availableWords].sort(() => Math.random() - 0.5).slice(0, slotsNeeded);
+
+    // Combine repeat words and additional words, then shuffle
+    const shuffled = [...repeatWords, ...chosenAdditional].sort(() => Math.random() - 0.5);
+
+    // Update played list
     setPlayedGameWordIds(prev => {
       const next = new Set(prev);
       shuffled.forEach(w => next.add(w.id));
@@ -523,6 +547,25 @@ export default function App() {
       return next;
     });
 
+    // Decrement remaining repeat count for any repeat words included in this round
+    const includedRepeatWords = shuffled.filter(w => (gameRepeatWords[w.id] || 0) > 0);
+    if (includedRepeatWords.length > 0) {
+      setGameRepeatWords(prev => {
+        const next = { ...prev };
+        includedRepeatWords.forEach(w => {
+          const rem = (next[w.id] || 0) - 1;
+          if (rem <= 0) {
+            delete next[w.id];
+          } else {
+            next[w.id] = rem;
+          }
+        });
+        localStorage.setItem('ebbinghaus_game_repeat_words', JSON.stringify(next));
+        return next;
+      });
+    }
+
+    peekedThisWordRef.current.clear();
     setGameWords(shuffled);
     setCurrentGameIdx(0);
     setCombo(0);
@@ -530,7 +573,43 @@ export default function App() {
     setIsGameMode(true);
     setGameStatus('playing');
     setupWordGame(shuffled[0]);
-  }, [filteredWords, playedGameWordIds, setupWordGame]);
+  }, [filteredWords, playedGameWordIds, gameRepeatWords, setupWordGame, showToast]);
+
+  const handleGamePeek = useCallback(() => {
+    const currentWord = gameWords[currentGameIdx];
+    if (!currentWord) return;
+
+    // 1. Put word into Ebbinghaus review list (reset stage to 0, mark error, reset completed flags, un-master)
+    const updatedWords = words.map(w => 
+      w.id === currentWord.id 
+        ? { 
+            ...w, 
+            ebbinghaus_stage: 0, 
+            has_error: true, 
+            last_review_time: 0,
+            is_completed_normal: false,
+            is_completed_dictation: false,
+            is_mastered: false,
+            listName: w.listName === 'Mastered Words' ? 'Default List' : (w.listName || 'Default List')
+          } 
+        : w
+    );
+    setWords(updatedWords);
+    saveWords(updatedWords);
+
+    // 2. Add word to the next 3 games
+    setGameRepeatWords(prev => {
+      const next = { ...prev, [currentWord.id]: 3 };
+      localStorage.setItem('ebbinghaus_game_repeat_words', JSON.stringify(next));
+      return next;
+    });
+
+    // Notify user once per word in current session
+    if (!peekedThisWordRef.current.has(currentWord.id)) {
+      peekedThisWordRef.current.add(currentWord.id);
+      showToast(`"${currentWord.word}" 已加入艾宾浩斯清单及接下来的3组游戏`);
+    }
+  }, [gameWords, currentGameIdx, words, showToast]);
 
   const handleGameInput = useCallback((char: string) => {
     if (gameStatus !== 'playing') return;
@@ -603,21 +682,9 @@ export default function App() {
         }, delay);
       }
     } else {
-      // Wrong
+      // Wrong keystroke: reset combo and play sound, do NOT add to Ebbinghaus
       setCombo(0);
-      
-      // Reset ebbinghaus_stage to 0 so they have to practice it more, and mark as error
-      const currentWord = gameWords[currentGameIdx];
-      const updatedWords = words.map(w => 
-        w.id === currentWord.id 
-          ? { ...w, ebbinghaus_stage: 0, has_error: true } 
-          : w
-      );
-      setWords(updatedWords);
-      saveWords(updatedWords);
-
-      // Visual feedback for wrong? Maybe shake?
-      playKeystrokeSound(char); // Or a different sound? User asked for mechanical keyboard sound for typing.
+      playKeystrokeSound(char);
     }
   }, [gameStatus, gameInput, gameWords, currentGameIdx, gameBlanks, combo, setupWordGame, words, setWords, saveWords, setStats, setSessionWordCount]);
 
@@ -1318,11 +1385,6 @@ export default function App() {
       setIsViewingHistory(false);
     }, 200);
   }, [currentWord, words]);
-
-  const showToast = (msg: string) => {
-    setImportMessage(msg);
-    setTimeout(() => setImportMessage(null), 3000);
-  };
 
   const renderInputFeedback = () => {
     if (!currentWord) return null;
@@ -2256,17 +2318,37 @@ export default function App() {
 
                   <div className="flex justify-center mb-10">
                     <button
-                      onMouseDown={() => setIsPeeking(true)}
+                      onMouseDown={() => {
+                        setIsPeeking(true);
+                        handleGamePeek();
+                      }}
                       onMouseUp={() => setIsPeeking(false)}
                       onMouseLeave={() => setIsPeeking(false)}
-                      onTouchStart={(e) => { e.preventDefault(); setIsPeeking(true); }}
+                      onTouchStart={(e) => { 
+                        e.preventDefault(); 
+                        setIsPeeking(true); 
+                        handleGamePeek();
+                      }}
                       onTouchEnd={() => setIsPeeking(false)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setIsPeeking(true);
+                          handleGamePeek();
+                        }
+                      }}
+                      onKeyUp={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setIsPeeking(false);
+                        }
+                      }}
                       className={`p-3 rounded-full transition-all duration-200 ${
                         isPeeking 
                           ? 'bg-indigo-600 text-white scale-95' 
                           : 'bg-zinc-900 text-zinc-500 hover:text-indigo-400 hover:bg-zinc-800'
                       }`}
-                      title="Hold to peek"
+                      title="Hold to peek (adds to Ebbinghaus and next 3 games)"
                     >
                       <Eye size={24} />
                     </button>
