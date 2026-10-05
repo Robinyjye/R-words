@@ -11,17 +11,21 @@ import { playKeystrokeSound, playSuccessSound, speakWord, speakWordAndExample, p
 import { ImportModal } from './components/ImportModal';
 import { StatsModal } from './components/StatsModal';
 import { RootDetectiveGame } from './components/RootDetectiveGame';
-import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, Save, CopyX, BarChart2, Search, BookOpen, Sparkles, Loader2 } from 'lucide-react';
+import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, Save, CopyX, BarChart2, Search, BookOpen, Sparkles, Loader2, Users } from 'lucide-react';
 import Papa from 'papaparse';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 
 interface DailyStat {
   count: number; // words
+  minutes?: number; // learning minutes
+  seconds?: number; // learning seconds
 }
 
 interface Stats {
   totalCount: number;
+  totalMinutes?: number;
+  totalSeconds?: number;
   daily: { [date: string]: DailyStat };
 }
 
@@ -125,7 +129,58 @@ const renderHighlightedWord = (wordObj: WordState) => {
   return <>{spans}</>;
 };
 
+function getOrCreateVisitorId(): string {
+  let id = localStorage.getItem('ebbinghaus_visitor_id');
+  if (!id) {
+    id = 'v_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString(36);
+    localStorage.setItem('ebbinghaus_visitor_id', id);
+  }
+  return id;
+}
+
 export default function App() {
+  const [onlineUsers, setOnlineUsers] = useState<number>(1);
+  const [totalUsers, setTotalUsers] = useState<number>(1);
+
+  // User presence & total statistics ping
+  useEffect(() => {
+    const visitorId = getOrCreateVisitorId();
+
+    const sendPing = async () => {
+      try {
+        const res = await fetch('/api/user-stats/ping', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ visitorId })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            if (typeof data.onlineUsers === 'number') setOnlineUsers(data.onlineUsers);
+            if (typeof data.totalUsers === 'number') setTotalUsers(data.totalUsers);
+          }
+        }
+      } catch (err) {
+        // Fallback or ignore network glitches
+      }
+    };
+
+    sendPing();
+    const interval = setInterval(sendPing, 25000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        sendPing();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   const [words, setWords] = useState<WordState[]>([]);
   const masteredCount = words.filter(w => w.is_mastered).length;
   const [currentWord, setCurrentWord] = useState<WordState | null>(null);
@@ -271,6 +326,7 @@ export default function App() {
     return {};
   });
   const peekedThisWordRef = useRef<Set<string>>(new Set());
+  const [peekedBlankIdx, setPeekedBlankIdx] = useState<number | null>(null);
   const [gameWords, setGameWords] = useState<WordState[]>([]);
   const [currentGameIdx, setCurrentGameIdx] = useState(0);
   const [gameInput, setGameInput] = useState<string[]>([]); // Array of characters for the blanks
@@ -279,7 +335,6 @@ export default function App() {
   const [maxCombo, setMaxCombo] = useState(0);
   const [showCombo, setShowCombo] = useState(false);
   const [gameStatus, setGameStatus] = useState<'playing' | 'correct' | 'finished'>('playing');
-  const [isPeeking, setIsPeeking] = useState(false);
   const [showRootDetective, setShowRootDetective] = useState(false);
 
   // Search State
@@ -409,6 +464,77 @@ export default function App() {
     localStorage.setItem('ebbinghaus_stats', JSON.stringify(stats));
   }, [stats]);
 
+  // Active study time tracking
+  const lastUserActivityRef = useRef<number>(Date.now());
+  const activeSecondsBufferRef = useRef<number>(0);
+
+  const flushStudyTime = useCallback(() => {
+    if (activeSecondsBufferRef.current <= 0) return;
+    const addSec = activeSecondsBufferRef.current;
+    activeSecondsBufferRef.current = 0;
+
+    setStats(prev => {
+      const today = new Date().toISOString().split('T')[0];
+      const currentDaily = prev.daily[today] || { count: 0, seconds: 0, minutes: 0 };
+      const newDailySec = (currentDaily.seconds || (currentDaily.minutes ? currentDaily.minutes * 60 : 0)) + addSec;
+      const newTotalSec = (prev.totalSeconds || (prev.totalMinutes ? prev.totalMinutes * 60 : 0)) + addSec;
+
+      return {
+        ...prev,
+        totalSeconds: newTotalSec,
+        totalMinutes: Math.floor(newTotalSec / 60),
+        daily: {
+          ...prev.daily,
+          [today]: {
+            ...currentDaily,
+            seconds: newDailySec,
+            minutes: Math.floor(newDailySec / 60)
+          }
+        }
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    const recordActivity = () => {
+      lastUserActivityRef.current = Date.now();
+    };
+
+    window.addEventListener('keydown', recordActivity);
+    window.addEventListener('mousedown', recordActivity);
+    window.addEventListener('touchstart', recordActivity);
+    window.addEventListener('scroll', recordActivity);
+
+    const timer = setInterval(() => {
+      // User is actively studying if page is visible and active within last 60s
+      if (!document.hidden && Date.now() - lastUserActivityRef.current < 60000) {
+        activeSecondsBufferRef.current += 1;
+        if (activeSecondsBufferRef.current >= 5) {
+          flushStudyTime();
+        }
+      }
+    }, 1000);
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        flushStudyTime();
+      } else {
+        lastUserActivityRef.current = Date.now();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(timer);
+      flushStudyTime();
+      window.removeEventListener('keydown', recordActivity);
+      window.removeEventListener('mousedown', recordActivity);
+      window.removeEventListener('touchstart', recordActivity);
+      window.removeEventListener('scroll', recordActivity);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [flushStudyTime]);
+
   // Trigger effect on every 5 combo with increasing intensity
   useEffect(() => {
     if (combo > 0 && combo % 5 === 0 && gameStatus === 'correct') {
@@ -501,6 +627,7 @@ export default function App() {
     
     setGameBlanks(selectedBlanks);
     setGameInput(new Array(selectedBlanks.length).fill(''));
+    setPeekedBlankIdx(null);
     setGameStatus('playing');
   }, []);
 
@@ -566,6 +693,7 @@ export default function App() {
     }
 
     peekedThisWordRef.current.clear();
+    setPeekedBlankIdx(null);
     setGameWords(shuffled);
     setCurrentGameIdx(0);
     setCombo(0);
@@ -624,6 +752,7 @@ export default function App() {
       const newInput = [...gameInput];
       newInput[currentBlankIdx] = char;
       setGameInput(newInput);
+      setPeekedBlankIdx(null);
       playKeystrokeSound(char);
 
       // Check if word is complete
@@ -688,19 +817,69 @@ export default function App() {
     }
   }, [gameStatus, gameInput, gameWords, currentGameIdx, gameBlanks, combo, setupWordGame, words, setWords, saveWords, setStats, setSessionWordCount]);
 
+  const startPeekingCurrentBlank = useCallback(() => {
+    if (gameStatus !== 'playing') return;
+
+    const currentBlankIdx = gameInput.findIndex(val => val === '');
+    if (currentBlankIdx === -1) return;
+
+    const currentWord = gameWords[currentGameIdx];
+    if (!currentWord) return;
+
+    const targetChar = currentWord.word[gameBlanks[currentBlankIdx]];
+    
+    // Mark as peeked: add to Ebbinghaus review list & next 3 games
+    handleGamePeek();
+
+    // Reset combo since a hint was used
+    setCombo(0);
+
+    // Play keystroke sound
+    playKeystrokeSound(targetChar);
+
+    // Show this one blank's letter
+    setPeekedBlankIdx(currentBlankIdx);
+  }, [gameStatus, gameInput, gameWords, currentGameIdx, gameBlanks, handleGamePeek, playKeystrokeSound]);
+
+  const stopPeeking = useCallback(() => {
+    setPeekedBlankIdx(null);
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isGameMode || gameStatus !== 'playing') return;
+
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        if (e.repeat) return;
+        startPeekingCurrentBlank();
+        return;
+      }
+
       if (e.key.length === 1 && /[a-zA-Z]/.test(e.key)) {
         handleGameInput(e.key);
       }
       if (e.key === 'Escape') {
         setIsGameMode(false);
+        stopPeeking();
       }
     };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (!isGameMode) return;
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        stopPeeking();
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isGameMode, gameStatus, handleGameInput]);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [isGameMode, gameStatus, handleGameInput, startPeekingCurrentBlank, stopPeeking]);
 
   const currentWordId = currentWord?.id;
 
@@ -1416,7 +1595,26 @@ export default function App() {
       {/* Header */}
       <header className="p-6 flex flex-col space-y-4">
         <div className="flex justify-between items-center relative">
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3 sm:space-x-4">
+            {/* Live Online & Total Users (Far Left, Vertical Stack, Pure Display, No Click) */}
+            <div 
+              className="flex flex-col justify-center px-2.5 py-1 bg-zinc-900/80 border border-zinc-800 rounded-xl select-none font-mono text-[10px] leading-tight space-y-0.5 shrink-0"
+            >
+              <div className="flex items-center space-x-1.5">
+                <span className="relative flex h-1.5 w-1.5 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                </span>
+                <span className="text-zinc-400">在线</span>
+                <span className="font-bold text-emerald-400">{onlineUsers}</span>
+              </div>
+              <div className="flex items-center space-x-1.5">
+                <Users size={10} className="text-zinc-500 shrink-0" />
+                <span className="text-zinc-400">用户</span>
+                <span className="font-bold text-zinc-200">{totalUsers}</span>
+              </div>
+            </div>
+
             <div 
               className={`flex items-center space-x-2 transition-colors ${masteredCount > 0 ? 'cursor-pointer hover:opacity-80' : ''}`}
               onClick={() => {
@@ -1579,9 +1777,12 @@ export default function App() {
               <BookOpen size={18} />
             </button>
             <button
-              onClick={() => setShowStats(true)}
+              onClick={() => {
+                flushStudyTime();
+                setShowStats(true);
+              }}
               className="p-2 rounded-full border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 hover:bg-zinc-900 transition-colors flex items-center justify-center"
-              title="Statistics"
+              title="学习概览与统计"
             >
               <BarChart2 size={18} />
             </button>
@@ -2298,16 +2499,20 @@ export default function App() {
                         if (isBlank) {
                           const blankIdx = gameBlanks.indexOf(i);
                           const isCurrent = gameInput.findIndex(v => v === '') === blankIdx;
+                          const isPeeked = peekedBlankIdx === blankIdx;
+                          const isFilled = !!gameInput[blankIdx];
                           return (
                             <span 
                               key={i} 
-                              className={`inline-block min-w-[1ch] border-b-4 mx-0.5 transition-all duration-200 ${
-                                gameInput[blankIdx] 
-                                  ? 'border-indigo-500 text-indigo-400' 
-                                  : isCurrent ? 'border-zinc-400' : 'border-zinc-800 text-transparent'
+                              className={`inline-block min-w-[1ch] border-b-4 mx-0.5 transition-all duration-150 ${
+                                isFilled 
+                                  ? 'border-indigo-500 text-indigo-400 font-bold' 
+                                  : isPeeked
+                                    ? 'border-amber-400 text-amber-300 font-bold scale-105'
+                                    : isCurrent ? 'border-zinc-400 text-transparent' : 'border-zinc-800 text-transparent'
                               }`}
                             >
-                              {gameInput[blankIdx] || (isPeeking ? <span className="opacity-30">{char}</span> : ' ')}
+                              {isFilled ? gameInput[blankIdx] : (isPeeked ? char : ' ')}
                             </span>
                           );
                         }
@@ -2318,39 +2523,30 @@ export default function App() {
 
                   <div className="flex justify-center mb-10">
                     <button
-                      onMouseDown={() => {
-                        setIsPeeking(true);
-                        handleGamePeek();
-                      }}
-                      onMouseUp={() => setIsPeeking(false)}
-                      onMouseLeave={() => setIsPeeking(false)}
+                      onMouseDown={() => startPeekingCurrentBlank()}
+                      onMouseUp={() => stopPeeking()}
+                      onMouseLeave={() => stopPeeking()}
                       onTouchStart={(e) => { 
                         e.preventDefault(); 
-                        setIsPeeking(true); 
-                        handleGamePeek();
+                        startPeekingCurrentBlank();
                       }}
-                      onTouchEnd={() => setIsPeeking(false)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          setIsPeeking(true);
-                          handleGamePeek();
-                        }
-                      }}
-                      onKeyUp={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          setIsPeeking(false);
-                        }
-                      }}
-                      className={`p-3 rounded-full transition-all duration-200 ${
-                        isPeeking 
-                          ? 'bg-indigo-600 text-white scale-95' 
-                          : 'bg-zinc-900 text-zinc-500 hover:text-indigo-400 hover:bg-zinc-800'
+                      onTouchEnd={() => stopPeeking()}
+                      className={`px-4 py-2 rounded-full transition-all duration-150 flex items-center gap-2 select-none border ${
+                        peekedBlankIdx !== null 
+                          ? 'bg-amber-500 text-zinc-950 border-amber-400 scale-95 shadow-lg shadow-amber-500/20' 
+                          : 'bg-zinc-900 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 border-zinc-800'
                       }`}
-                      title="Hold to peek (adds to Ebbinghaus and next 3 games)"
+                      title="按住空格键或按住按钮显示当前字母，松开隐藏"
                     >
-                      <Eye size={24} />
+                      <Eye size={18} className={peekedBlankIdx !== null ? 'text-zinc-950' : 'text-zinc-400'} />
+                      <span className="text-xs font-medium">按住空格键显示一个字母（松开隐藏）</span>
+                      <kbd className={`text-[10px] px-1.5 py-0.5 rounded border font-mono shadow-inner ${
+                        peekedBlankIdx !== null 
+                          ? 'bg-amber-600/30 text-zinc-950 border-amber-600/50' 
+                          : 'bg-zinc-800 text-zinc-400 border-zinc-700/60'
+                      }`}>
+                        Space
+                      </kbd>
                     </button>
                   </div>
 

@@ -1,14 +1,18 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, TrendingUp } from 'lucide-react';
+import { X, TrendingUp, Clock, Timer } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
 
 interface DailyStat {
   count: number; // words
+  minutes?: number; // learning minutes
+  seconds?: number; // learning seconds
 }
 
 interface Stats {
   totalCount: number;
+  totalMinutes?: number;
+  totalSeconds?: number;
   daily: { [date: string]: DailyStat };
 }
 
@@ -34,7 +38,18 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
     }
   }, [isOpen]);
   const todayStr = today.toISOString().split('T')[0];
-  const todayStats = stats.daily[todayStr] || { count: 0 };
+  const todayStats = stats.daily[todayStr] || { count: 0, minutes: 0, seconds: 0 };
+
+  // Calculate learning time in minutes
+  const todayTrackedSec = todayStats.seconds ?? (todayStats.minutes ? todayStats.minutes * 60 : 0);
+  const todayMinutes = todayTrackedSec > 0
+    ? Math.max(1, Math.round(todayTrackedSec / 60))
+    : (todayStats.count > 0 ? Math.max(1, Math.round(todayStats.count * 0.8)) : 0);
+
+  const totalTrackedSec = stats.totalSeconds ?? (stats.totalMinutes ? stats.totalMinutes * 60 : 0);
+  const totalMinutes = totalTrackedSec > 0
+    ? Math.max(todayMinutes, Math.round(totalTrackedSec / 60))
+    : (stats.totalCount > 0 ? Math.max(todayMinutes, Math.round(stats.totalCount * 0.8)) : 0);
 
   // Prepare data for the bar chart (last 30 days)
   const barChartData = useMemo(() => {
@@ -127,8 +142,8 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
                   <TrendingUp className="text-emerald-500" size={24} />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-white tracking-tight">学习概览</h2>
-                  <p className="text-xs text-zinc-400 font-medium uppercase tracking-widest mt-0.5">Statistics & Activity</p>
+                  <h2 className="text-2xl font-bold text-white tracking-tight">学习概览与统计</h2>
+                  <p className="text-xs text-zinc-400 font-medium uppercase tracking-widest mt-0.5">Statistics & Learning Activity</p>
                 </div>
               </div>
               <button
@@ -141,18 +156,38 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
 
             <div className="p-8 space-y-12">
               {/* Top Stats Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                 {[
-                  { label: '今日单词', value: todayStats.count, color: 'text-emerald-400' },
-                  { label: '累计单词', value: stats.totalCount, color: 'text-white' },
-                  { label: '练习天数', value: Object.values(stats.daily).filter(d => d.count > 0).length, color: 'text-white' },
-                  { label: '单日最高', value: Math.max(...Object.values(stats.daily).map(d => d.count), 0), color: 'text-white' },
+                  { 
+                    label: '今日学习', 
+                    value: todayMinutes, 
+                    unit: '分钟',
+                    color: 'text-amber-400',
+                    icon: Clock
+                  },
+                  { 
+                    label: '累计学习', 
+                    value: totalMinutes, 
+                    unit: '分钟',
+                    color: 'text-cyan-400',
+                    icon: Timer
+                  },
+                  { label: '今日单词', value: todayStats.count, unit: '词', color: 'text-emerald-400' },
+                  { label: '累计单词', value: stats.totalCount, unit: '词', color: 'text-white' },
+                  { label: '练习天数', value: Object.values(stats.daily).filter(d => d.count > 0 || (d.seconds && d.seconds > 60)).length, unit: '天', color: 'text-white' },
+                  { label: '单日最高', value: Math.max(...Object.values(stats.daily).map(d => d.count), 0), unit: '词', color: 'text-white' },
                 ].map((stat, i) => (
-                  <div key={i} className="bg-zinc-900/40 border border-zinc-800/50 p-6 rounded-3xl space-y-1">
-                    <div className={`text-3xl font-mono font-bold ${stat.color} tracking-tighter`}>
-                      {stat.value}
+                  <div key={i} className="bg-zinc-900/40 border border-zinc-800/50 p-5 rounded-3xl space-y-1 relative overflow-hidden">
+                    <div className="flex items-center space-x-1.5">
+                      {stat.icon && (
+                        <stat.icon size={16} className={`${stat.color} mr-0.5 shrink-0`} />
+                      )}
+                      <div className={`text-2xl sm:text-3xl font-mono font-bold ${stat.color} tracking-tighter flex items-baseline gap-1`}>
+                        {stat.value}
+                        <span className="text-xs font-sans font-medium text-zinc-400">{stat.unit}</span>
+                      </div>
                     </div>
-                    <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-400">{stat.label}</div>
+                    <div className="text-[10px] uppercase tracking-[0.15em] font-bold text-zinc-400">{stat.label}</div>
                   </div>
                 ))}
               </div>
@@ -235,7 +270,7 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
                             animate={{ opacity: 1, scale: 1 }}
                             transition={{ delay: i * 0.001 }}
                             className={`w-3 h-3 rounded-[3px] ${getIntensity(d.count)} transition-all duration-500 hover:ring-2 hover:ring-emerald-500/50`}
-                            title={`${d.date}: ${d.count} words`}
+                            title={`${d.date}: ${d.count} 个单词 · ${Math.round((stats.daily[d.date]?.seconds ? (stats.daily[d.date].seconds || 0) / 60 : (d.count * 0.8)))} 分钟`}
                           />
                         ))}
                       </div>
