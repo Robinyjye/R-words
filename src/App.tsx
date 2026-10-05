@@ -2539,14 +2539,7 @@ export default function App() {
                       title="按住空格键或按住按钮显示当前字母，松开隐藏"
                     >
                       <Eye size={18} className={peekedBlankIdx !== null ? 'text-zinc-950' : 'text-zinc-400'} />
-                      <span className="text-xs font-medium">按住空格键显示一个字母（松开隐藏）</span>
-                      <kbd className={`text-[10px] px-1.5 py-0.5 rounded border font-mono shadow-inner ${
-                        peekedBlankIdx !== null 
-                          ? 'bg-amber-600/30 text-zinc-950 border-amber-600/50' 
-                          : 'bg-zinc-800 text-zinc-400 border-zinc-700/60'
-                      }`}>
-                        Space
-                      </kbd>
+                      <span className="text-xs font-medium">按空格</span>
                     </button>
                   </div>
 
