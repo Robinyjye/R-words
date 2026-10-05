@@ -2531,15 +2531,14 @@ export default function App() {
                         startPeekingCurrentBlank();
                       }}
                       onTouchEnd={() => stopPeeking()}
-                      className={`px-4 py-2 rounded-full transition-all duration-150 flex items-center gap-2 select-none border ${
+                      className={`p-2 rounded-full transition-all duration-150 flex items-center justify-center select-none border ${
                         peekedBlankIdx !== null 
                           ? 'bg-amber-500 text-zinc-950 border-amber-400 scale-95 shadow-lg shadow-amber-500/20' 
                           : 'bg-zinc-900 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 border-zinc-800'
                       }`}
                       title="按住空格键或按住按钮显示当前字母，松开隐藏"
                     >
-                      <Eye size={18} className={peekedBlankIdx !== null ? 'text-zinc-950' : 'text-zinc-400'} />
-                      <span className="text-xs font-medium">按空格</span>
+                      <Eye size={20} className={peekedBlankIdx !== null ? 'text-zinc-950' : 'text-zinc-400'} />
                     </button>
                   </div>
 
