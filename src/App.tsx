@@ -632,39 +632,104 @@ export default function App() {
   }, []);
 
   const startGame = useCallback(() => {
-    if (filteredWords.length === 0) {
-      showToast("当前列表没有单词，无法开始游戏。");
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    const baseWords = filteredWords.length > 0 ? filteredWords : words;
+    if (baseWords.length === 0) {
+      showToast("当前没有单词，无法开始游戏。");
       return;
     }
 
+    const now = Date.now();
+    const isMasteredList = activeList === 'Mastered Words';
+
     // 1. Mandatory repeat words that belong to the current list
-    const repeatWords = filteredWords.filter(w => (gameRepeatWords[w.id] || 0) > 0);
+    const repeatWords = baseWords.filter(w => (gameRepeatWords[w.id] || 0) > 0);
     const repeatWordIds = new Set(repeatWords.map(w => w.id));
 
-    // 2. Normal available words not yet played and not in repeat list
-    let availableWords = filteredWords.filter(w => !repeatWordIds.has(w.id) && !playedGameWordIds.has(w.id));
-    
-    // If all non-repeat words have been played and we still need words
-    if (availableWords.length === 0 && repeatWords.length < 20) {
-      const currentListIds = new Set(filteredWords.map(w => w.id));
-      setPlayedGameWordIds(prev => {
-        const next = new Set(prev);
-        currentListIds.forEach(id => next.delete(id));
-        localStorage.setItem('playedGameWordIds', JSON.stringify(Array.from(next)));
-        return next;
-      });
-      availableWords = filteredWords.filter(w => !repeatWordIds.has(w.id));
-      if (availableWords.length > 0) {
-        showToast("列表中的单词已全部复习完毕，开启新一轮！");
+    // 2. Ebbinghaus words due for practice (isWordDue, or error words)
+    const ebbinghausDueWords = baseWords.filter(w => 
+      !repeatWordIds.has(w.id) && (
+        isMasteredList 
+          ? true 
+          : (!w.is_mastered && isWordDue(w, isDictationMode, now))
+      )
+    );
+
+    // Sort Ebbinghaus due words by urgency:
+    // a. Error words first
+    // b. Active reviews (stage > 0), prioritized by overdue ratio
+    // c. New/unreviewed words (stage === 0)
+    ebbinghausDueWords.sort((a, b) => {
+      const stageA = a.ebbinghaus_stage || 0;
+      const stageB = b.ebbinghaus_stage || 0;
+
+      if (a.has_error && !b.has_error) return -1;
+      if (!a.has_error && b.has_error) return 1;
+
+      if (stageA > 0 && stageB === 0) return -1;
+      if (stageA === 0 && stageB > 0) return 1;
+
+      if (stageA > 0 && stageB > 0) {
+        const intervalA = EBBINGHAUS_INTERVALS[stageA] || EBBINGHAUS_INTERVALS[EBBINGHAUS_INTERVALS.length - 1];
+        const intervalB = EBBINGHAUS_INTERVALS[stageB] || EBBINGHAUS_INTERVALS[EBBINGHAUS_INTERVALS.length - 1];
+        const overdueRatioA = (now - (a.last_review_time || 0)) / intervalA;
+        const overdueRatioB = (now - (b.last_review_time || 0)) / intervalB;
+        return overdueRatioB - overdueRatioA;
       }
+
+      return (a.last_review_time || 0) - (b.last_review_time || 0);
+    });
+
+    // Combine repeat words and due words
+    const prioritizedWords = [...repeatWords, ...ebbinghausDueWords];
+    const prioritizedIds = new Set(prioritizedWords.map(w => w.id));
+
+    let selectedWords: WordState[] = [];
+    if (prioritizedWords.length >= 20) {
+      selectedWords = prioritizedWords.slice(0, 20);
+    } else {
+      const slotsNeeded = 20 - prioritizedWords.length;
+      
+      // 3. Normal available words in baseWords not yet played and not in prioritized list
+      let availableWords = baseWords.filter(w => !prioritizedIds.has(w.id) && !playedGameWordIds.has(w.id));
+      
+      // If all unplayed words have been exhausted, reset played history
+      if (availableWords.length === 0) {
+        const currentListIds = new Set(baseWords.map(w => w.id));
+        setPlayedGameWordIds(prev => {
+          const next = new Set(prev);
+          currentListIds.forEach(id => next.delete(id));
+          localStorage.setItem('playedGameWordIds', JSON.stringify(Array.from(next)));
+          return next;
+        });
+        availableWords = baseWords.filter(w => !prioritizedIds.has(w.id));
+      }
+
+      // If baseWords still doesn't have enough and we have other lists with due words
+      let additionalFromOtherLists: WordState[] = [];
+      if (availableWords.length < slotsNeeded && filteredWords.length > 0) {
+        const remainingNeeded = slotsNeeded - availableWords.length;
+        const otherDueWords = words.filter(w => 
+          !w.is_mastered && 
+          !prioritizedIds.has(w.id) && 
+          (w.listName || 'Default List') !== activeList && 
+          isWordDue(w, isDictationMode, now)
+        );
+        additionalFromOtherLists = [...otherDueWords].sort(() => Math.random() - 0.5).slice(0, remainingNeeded);
+      }
+
+      const chosenAdditional = [...availableWords]
+        .sort(() => Math.random() - 0.5)
+        .slice(0, slotsNeeded);
+
+      selectedWords = [...prioritizedWords, ...chosenAdditional, ...additionalFromOtherLists].slice(0, 20);
     }
 
-    // Pick additional words up to 20 total
-    const slotsNeeded = Math.max(0, 20 - repeatWords.length);
-    const chosenAdditional = [...availableWords].sort(() => Math.random() - 0.5).slice(0, slotsNeeded);
-
-    // Combine repeat words and additional words, then shuffle
-    const shuffled = [...repeatWords, ...chosenAdditional].sort(() => Math.random() - 0.5);
+    // Combine and shuffle words
+    const shuffled = [...selectedWords].sort(() => Math.random() - 0.5);
 
     // Update played list
     setPlayedGameWordIds(prev => {
@@ -692,6 +757,13 @@ export default function App() {
       });
     }
 
+    const dueCountInGame = shuffled.filter(w => 
+      (gameRepeatWords[w.id] || 0) > 0 || isWordDue(w, isDictationMode, now)
+    ).length;
+    if (dueCountInGame > 0) {
+      showToast(`已优先挑选 ${dueCountInGame} 个艾宾浩斯待复习单词`);
+    }
+
     peekedThisWordRef.current.clear();
     setPeekedBlankIdx(null);
     setGameWords(shuffled);
@@ -701,7 +773,7 @@ export default function App() {
     setIsGameMode(true);
     setGameStatus('playing');
     setupWordGame(shuffled[0]);
-  }, [filteredWords, playedGameWordIds, gameRepeatWords, setupWordGame, showToast]);
+  }, [filteredWords, words, activeList, isDictationMode, playedGameWordIds, gameRepeatWords, setupWordGame, showToast]);
 
   const handleGamePeek = useCallback(() => {
     const currentWord = gameWords[currentGameIdx];
@@ -789,13 +861,55 @@ export default function App() {
         });
         setSessionWordCount(prev => prev + 1);
 
-        const updatedWords = words.map(w => 
-          w.id === currentWord.id 
-            ? { ...w, review_count: w.review_count + 1, last_review_time: now } 
-            : w
-        );
+        const currentWordInGame = gameWords[currentGameIdx];
+        const hasPeeked = peekedThisWordRef.current.has(currentWordInGame.id);
+
+        const updatedWords = words.map(w => {
+          if (w.id !== currentWordInGame.id) return w;
+
+          const currentStage = w.ebbinghaus_stage || 0;
+          const nextStage = hasPeeked 
+            ? 0 
+            : Math.min(9, currentStage + 1);
+
+          return {
+            ...w,
+            review_count: (w.review_count || 0) + 1,
+            last_review_time: now,
+            ebbinghaus_stage: nextStage,
+            has_error: hasPeeked,
+            is_completed_normal: true,
+            is_completed_dictation: true,
+          };
+        });
         setWords(updatedWords);
         saveWords(updatedWords);
+
+        // Also keep currentWord in sync if it is the word being played
+        if (currentWord && currentWord.id === currentWordInGame.id) {
+          const currentStage = currentWord.ebbinghaus_stage || 0;
+          setCurrentWord({
+            ...currentWord,
+            review_count: (currentWord.review_count || 0) + 1,
+            last_review_time: now,
+            ebbinghaus_stage: hasPeeked ? 0 : Math.min(9, currentStage + 1),
+            has_error: hasPeeked,
+            is_completed_normal: true,
+            is_completed_dictation: true,
+          });
+        }
+
+        // If solved without peeking, remove from session errors
+        if (!hasPeeked) {
+          setSessionErrors(prev => {
+            if (prev.has(currentWordInGame.id)) {
+              const next = new Set(prev);
+              next.delete(currentWordInGame.id);
+              return next;
+            }
+            return prev;
+          });
+        }
         
         const delay = isMilestone ? (2000 + (Math.floor(newCombo / 5) - 1) * 1000) : 1200;
         setTimeout(() => {
@@ -815,7 +929,7 @@ export default function App() {
       setCombo(0);
       playKeystrokeSound(char);
     }
-  }, [gameStatus, gameInput, gameWords, currentGameIdx, gameBlanks, combo, setupWordGame, words, setWords, saveWords, setStats, setSessionWordCount]);
+  }, [gameStatus, gameInput, gameWords, currentGameIdx, gameBlanks, combo, setupWordGame, words, setWords, saveWords, setStats, setSessionWordCount, currentWord, setCurrentWord, setSessionErrors]);
 
   const startPeekingCurrentBlank = useCallback(() => {
     if (gameStatus !== 'playing') return;
@@ -885,6 +999,9 @@ export default function App() {
 
   // Update current word when words change or transition finishes
   useEffect(() => {
+    // When playing word game, do not switch words or speak background words
+    if (isGameMode) return;
+
     if (!isTransitioning) {
       if (filteredWords.length > 0) {
         // Prevent auto-jumping if the current word is still valid
@@ -931,7 +1048,7 @@ export default function App() {
         setCurrentWord(null);
       }
     }
-  }, [filteredWords, isTransitioning, currentWordId, isViewingHistory, isDictationMode, isEbbinghausMode]);
+  }, [filteredWords, isTransitioning, currentWordId, isViewingHistory, isDictationMode, isEbbinghausMode, isGameMode]);
 
   const handleBack = useCallback(() => {
     let newHistory = [...history];
@@ -2521,8 +2638,9 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="flex justify-center mb-10">
+                  <div className="flex justify-center items-center mb-10">
                     <button
+                      type="button"
                       onMouseDown={() => startPeekingCurrentBlank()}
                       onMouseUp={() => stopPeeking()}
                       onMouseLeave={() => stopPeeking()}

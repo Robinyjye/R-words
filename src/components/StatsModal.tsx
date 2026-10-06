@@ -51,6 +51,14 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
     ? Math.max(todayMinutes, Math.round(totalTrackedSec / 60))
     : (stats.totalCount > 0 ? Math.max(todayMinutes, Math.round(stats.totalCount * 0.8)) : 0);
 
+  // Calculate cumulative learning time in hours
+  const totalHours = useMemo(() => {
+    if (totalMinutes <= 0) return '0';
+    const hours = totalMinutes / 60;
+    if (hours < 0.1) return '0.1';
+    return Number(hours.toFixed(1)).toString();
+  }, [totalMinutes]);
+
   // Prepare data for the bar chart (last 30 days)
   const barChartData = useMemo(() => {
     return Array.from({ length: 30 }, (_, i) => {
@@ -167,17 +175,18 @@ export function StatsModal({ isOpen, onClose, stats }: StatsModalProps) {
                   },
                   { 
                     label: '累计学习', 
-                    value: totalMinutes, 
-                    unit: '分钟',
+                    value: totalHours, 
+                    unit: '小时',
                     color: 'text-cyan-400',
-                    icon: Timer
+                    icon: Timer,
+                    tooltip: `累计学习：${totalMinutes} 分钟`
                   },
                   { label: '今日单词', value: todayStats.count, unit: '词', color: 'text-emerald-400' },
                   { label: '累计单词', value: stats.totalCount, unit: '词', color: 'text-white' },
                   { label: '练习天数', value: Object.values(stats.daily).filter(d => d.count > 0 || (d.seconds && d.seconds > 60)).length, unit: '天', color: 'text-white' },
                   { label: '单日最高', value: Math.max(...Object.values(stats.daily).map(d => d.count), 0), unit: '词', color: 'text-white' },
                 ].map((stat, i) => (
-                  <div key={i} className="bg-zinc-900/40 border border-zinc-800/50 p-5 rounded-3xl space-y-1 relative overflow-hidden">
+                  <div key={i} title={stat.tooltip} className="bg-zinc-900/40 border border-zinc-800/50 p-5 rounded-3xl space-y-1 relative overflow-hidden">
                     <div className="flex items-center space-x-1.5">
                       {stat.icon && (
                         <stat.icon size={16} className={`${stat.color} mr-0.5 shrink-0`} />
