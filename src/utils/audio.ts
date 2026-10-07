@@ -263,3 +263,100 @@ export const speakWordAndExample = (word: string, example?: string) => {
     }
   }
 };
+
+export const playWordAndExampleSequence = (
+  word: string,
+  example: string | undefined,
+  speed: number, // 1 or 1.2
+  onComplete: () => void
+): (() => void) => {
+  if (!('speechSynthesis' in window)) {
+    const t = setTimeout(onComplete, Math.round(2500 / speed));
+    return () => clearTimeout(t);
+  }
+
+  window.speechSynthesis.cancel();
+
+  let isCancelled = false;
+  let timerId: any = null;
+
+  const cancel = () => {
+    isCancelled = true;
+    if (timerId) clearTimeout(timerId);
+    window.speechSynthesis.cancel();
+  };
+
+  const wordRate = Math.max(0.7, 0.9 * speed);
+  const sentenceRate = Math.max(0.7, 0.95 * speed);
+
+  const pauseBetweenWords = Math.round(350 / speed);
+  const pauseAfterWords = Math.round(500 / speed);
+  const pauseAfterSentence = Math.round(800 / speed);
+
+  // 1st time speaking word
+  const utteranceWord1 = new SpeechSynthesisUtterance(word);
+  utteranceWord1.lang = 'en-US';
+  utteranceWord1.rate = wordRate;
+
+  // 2nd time speaking word
+  const speakWordRep2 = () => {
+    if (isCancelled) return;
+    const utteranceWord2 = new SpeechSynthesisUtterance(word);
+    utteranceWord2.lang = 'en-US';
+    utteranceWord2.rate = wordRate;
+
+    utteranceWord2.onend = () => {
+      if (isCancelled) return;
+      if (example && example.trim()) {
+        timerId = setTimeout(() => {
+          if (isCancelled) return;
+          const utteranceExample = new SpeechSynthesisUtterance(example.trim());
+          utteranceExample.lang = 'en-US';
+          utteranceExample.rate = sentenceRate;
+
+          utteranceExample.onend = () => {
+            if (isCancelled) return;
+            timerId = setTimeout(() => {
+              if (!isCancelled) onComplete();
+            }, pauseAfterSentence);
+          };
+
+          utteranceExample.onerror = () => {
+            if (!isCancelled) onComplete();
+          };
+
+          window.speechSynthesis.speak(utteranceExample);
+        }, pauseAfterWords);
+      } else {
+        timerId = setTimeout(() => {
+          if (!isCancelled) onComplete();
+        }, pauseAfterWords);
+      }
+    };
+
+    utteranceWord2.onerror = () => {
+      if (!isCancelled) onComplete();
+    };
+
+    window.speechSynthesis.speak(utteranceWord2);
+  };
+
+  utteranceWord1.onend = () => {
+    if (isCancelled) return;
+    timerId = setTimeout(() => {
+      speakWordRep2();
+    }, pauseBetweenWords);
+  };
+
+  utteranceWord1.onerror = () => {
+    if (isCancelled) return;
+    timerId = setTimeout(() => {
+      speakWordRep2();
+    }, pauseBetweenWords);
+  };
+
+  window.speechSynthesis.speak(utteranceWord1);
+
+  return cancel;
+};
+

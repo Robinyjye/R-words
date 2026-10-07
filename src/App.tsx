@@ -7,11 +7,12 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { WordState } from './utils/word';
 import { loadWords, saveWords, getNextWordToReview, isWordDue, EBBINGHAUS_INTERVALS } from './utils/storage';
 import { enrichWords } from './utils/gemini';
-import { playKeystrokeSound, playSuccessSound, speakWord, speakWordAndExample, playComboSound } from './utils/audio';
+import { playKeystrokeSound, playSuccessSound, speakWord, speakWordAndExample, playWordAndExampleSequence, playComboSound } from './utils/audio';
 import { ImportModal } from './components/ImportModal';
 import { StatsModal } from './components/StatsModal';
 import { RootDetectiveGame } from './components/RootDetectiveGame';
-import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, Save, CopyX, BarChart2, Search, BookOpen, Sparkles, Loader2, Users, Undo2 } from 'lucide-react';
+import { SameRootWordsModal } from './components/SameRootWordsModal';
+import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, Save, CopyX, BarChart2, Search, BookOpen, Sparkles, Loader2, Users, Undo2, Play, Pause } from 'lucide-react';
 import Papa from 'papaparse';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
@@ -343,6 +344,125 @@ export default function App() {
   const [showCombo, setShowCombo] = useState(false);
   const [gameStatus, setGameStatus] = useState<'playing' | 'correct' | 'finished'>('playing');
   const [showRootDetective, setShowRootDetective] = useState(false);
+  const [selectedRootInfo, setSelectedRootInfo] = useState<{ rootCore: string; rootMeaning?: string } | null>(null);
+
+  // Auto-play list words and examples
+  const [isAutoPlaying, setIsAutoPlaying] = useState<boolean>(false);
+  const [autoPlaySpeed, setAutoPlaySpeed] = useState<1 | 1.2>(() => {
+    try {
+      const saved = localStorage.getItem('ebbinghaus_autoplay_speed');
+      if (saved && (saved === '1' || saved === '1.2')) {
+        return Number(saved) as 1 | 1.2;
+      }
+    } catch (e) {}
+    return 1;
+  });
+  const [autoPlayIndex, setAutoPlayIndex] = useState<number>(0);
+  const autoPlayCancelRef = useRef<(() => void) | null>(null);
+  const autoPlayClickTimerRef = useRef<any>(null);
+
+  const stopAutoPlay = useCallback(() => {
+    if (autoPlayCancelRef.current) {
+      autoPlayCancelRef.current();
+      autoPlayCancelRef.current = null;
+    }
+    setIsAutoPlaying(false);
+  }, []);
+
+  // Handle single play button click: default 1x, click twice ("点两下") for 1.2x
+  const handlePlayButtonClick = useCallback(() => {
+    if (autoPlayClickTimerRef.current) {
+      // Second click within 320ms -> "点两下" (double click)
+      clearTimeout(autoPlayClickTimerRef.current);
+      autoPlayClickTimerRef.current = null;
+
+      const nextSpeed: 1 | 1.2 = autoPlaySpeed === 1 ? 1.2 : 1;
+      setAutoPlaySpeed(nextSpeed);
+      localStorage.setItem('ebbinghaus_autoplay_speed', nextSpeed.toString());
+      showToast(`播放速度已设为: ${nextSpeed}x`);
+
+      if (!isAutoPlaying) {
+        if (filteredWords.length === 0) {
+          showToast(`当前列表 "${activeList}" 没有单词`);
+          return;
+        }
+        const currentIdx = filteredWords.findIndex(w => w.id === currentWord?.id);
+        const startIdx = currentIdx >= 0 ? currentIdx : 0;
+        setAutoPlayIndex(startIdx);
+        setIsAutoPlaying(true);
+      }
+      return;
+    }
+
+    // First click: wait 320ms to distinguish single click vs "点两下"
+    autoPlayClickTimerRef.current = setTimeout(() => {
+      autoPlayClickTimerRef.current = null;
+
+      if (isAutoPlaying) {
+        stopAutoPlay();
+        showToast('已暂停自动循环播放');
+      } else {
+        if (filteredWords.length === 0) {
+          showToast(`当前列表 "${activeList}" 没有单词`);
+          return;
+        }
+        const currentIdx = filteredWords.findIndex(w => w.id === currentWord?.id);
+        const startIdx = currentIdx >= 0 ? currentIdx : 0;
+        setAutoPlayIndex(startIdx);
+        setIsAutoPlaying(true);
+        showToast(`开始自动循环播放 (${autoPlaySpeed}x)`);
+      }
+    }, 320);
+  }, [autoPlaySpeed, isAutoPlaying, filteredWords, activeList, currentWord, stopAutoPlay, showToast]);
+
+  useEffect(() => {
+    return () => {
+      if (autoPlayClickTimerRef.current) {
+        clearTimeout(autoPlayClickTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Stop auto-play if game mode is opened
+  useEffect(() => {
+    if (isGameMode && isAutoPlaying) {
+      stopAutoPlay();
+    }
+  }, [isGameMode, isAutoPlaying, stopAutoPlay]);
+
+  // Auto-play loop sequence effect
+  useEffect(() => {
+    if (!isAutoPlaying || filteredWords.length === 0) {
+      if (autoPlayCancelRef.current) {
+        autoPlayCancelRef.current();
+        autoPlayCancelRef.current = null;
+      }
+      return;
+    }
+
+    const safeIndex = autoPlayIndex % filteredWords.length;
+    const targetWord = filteredWords[safeIndex];
+    if (!targetWord) return;
+
+    // Show the target word on the flashcard
+    setCurrentWord(targetWord);
+
+    autoPlayCancelRef.current = playWordAndExampleSequence(
+      targetWord.word,
+      targetWord.example_sentence,
+      autoPlaySpeed,
+      () => {
+        setAutoPlayIndex(prev => (prev + 1) % filteredWords.length);
+      }
+    );
+
+    return () => {
+      if (autoPlayCancelRef.current) {
+        autoPlayCancelRef.current();
+        autoPlayCancelRef.current = null;
+      }
+    };
+  }, [isAutoPlaying, autoPlayIndex, filteredWords, autoPlaySpeed]);
 
   // Search State
   const [searchTerm, setSearchTerm] = useState('');
@@ -1275,6 +1395,9 @@ export default function App() {
 
       // Handle letter input (only allow letters and spaces/hyphens if they are in the word)
       if (e.key.length === 1) {
+        if (isAutoPlaying) {
+          stopAutoPlay();
+        }
         const targetWord = currentWord.word;
         
         // Check for error (only in dictation mode)
@@ -1900,19 +2023,19 @@ export default function App() {
             </div>
 
             <div 
-              className={`flex items-center space-x-2 transition-colors ${masteredCount > 0 ? 'cursor-pointer hover:opacity-80' : ''}`}
+              className={`flex items-center space-x-1.5 transition-colors ${masteredCount > 0 ? 'cursor-pointer hover:opacity-80' : ''}`}
               onClick={() => {
                 if (masteredCount > 0) {
                   setActiveList('Mastered Words');
                 }
               }}
             >
-              <Database size={18} className="text-white" />
-              <div className="flex flex-col">
-                <span className="text-sm font-bold tracking-wider leading-none mb-1 text-white">
+              <Database size={15} className="text-white shrink-0" />
+              <div className="flex flex-col whitespace-nowrap">
+                <span className="text-[10px] font-bold tracking-wider leading-tight mb-0.5 text-white">
                   total: {masteredCount}/{words.length}
                 </span>
-                <span className="text-sm font-medium tracking-wide text-zinc-100 leading-none">
+                <span className="text-[10px] font-medium tracking-wide text-zinc-300 leading-tight">
                   {filteredWords.length} in list
                 </span>
               </div>
@@ -1921,8 +2044,8 @@ export default function App() {
             {/* List Selector */}
             {words.length > 0 && (
               <div className="flex items-center space-x-2">
-                <div className="relative inline-grid items-center">
-                  <span className="invisible px-3 pr-8 py-1.5 text-sm whitespace-pre col-start-1 row-start-1">
+                <div className="relative inline-grid items-center max-w-[130px] sm:max-w-[160px] md:max-w-[185px]">
+                  <span className="invisible px-2.5 pr-6 py-1 text-xs truncate col-start-1 row-start-1 block max-w-full">
                     {activeListLabel}
                   </span>
                   <select 
@@ -1931,7 +2054,8 @@ export default function App() {
                       setActiveList(e.target.value);
                       (e.target as HTMLSelectElement).blur();
                     }}
-                    className="col-start-1 row-start-1 w-full h-full appearance-none bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-lg pl-3 pr-8 py-1.5 focus:outline-none focus:border-emerald-500/50 cursor-pointer"
+                    title={activeListLabel}
+                    className="col-start-1 row-start-1 w-full h-full appearance-none bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs rounded-lg pl-2.5 pr-6 py-1 focus:outline-none focus:border-emerald-500/50 cursor-pointer truncate max-w-full"
                   >
                     {lists.map(list => (
                       <option key={list.name} value={list.name}>
@@ -1939,28 +2063,28 @@ export default function App() {
                       </option>
                     ))}
                   </select>
-                  <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+                  <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
                 </div>
                 
                 {activeList && (
-                  <div className="flex items-center space-x-1">
+                  <div className="flex items-center space-x-0.5 bg-zinc-900/80 border border-zinc-800 rounded-full px-1.5 py-0.5 shadow-sm">
                     <button 
                       onClick={handleExport}
-                      className="p-1.5 text-zinc-500 hover:text-blue-400 hover:bg-zinc-900 rounded-md transition-colors"
+                      className="p-1 text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 rounded-full transition-colors"
                       title="Download List as CSV (Words only)"
                     >
                       <Download size={14} />
                     </button>
                     <button 
                       onClick={handleBackup}
-                      className="p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-zinc-900 rounded-md transition-colors"
+                      className="p-1 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors"
                       title="Full Backup as JSON (Includes learning records)"
                     >
                       <Save size={14} />
                     </button>
                     <button 
                       onClick={handleRemoveDuplicates}
-                      className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-zinc-900 rounded-md transition-colors"
+                      className="p-1 text-zinc-400 hover:text-rose-400 hover:bg-zinc-800 rounded-full transition-colors"
                       title="Remove Duplicate Words (Global)"
                     >
                       <CopyX size={14} />
@@ -1970,14 +2094,14 @@ export default function App() {
                         setNewListName(activeList);
                         setListToRename(activeList);
                       }}
-                      className="p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-zinc-900 rounded-md transition-colors"
+                      className="p-1 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors"
                       title="Rename List"
                     >
                       <Pencil size={14} />
                     </button>
                     <button 
                       onClick={() => setListToDelete(activeList)}
-                      className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-zinc-900 rounded-md transition-colors"
+                      className="p-1 text-zinc-400 hover:text-rose-400 hover:bg-zinc-800 rounded-full transition-colors"
                       title="Delete List"
                     >
                       <Trash2 size={14} />
@@ -1986,11 +2110,9 @@ export default function App() {
                 )}
               </div>
             )}
-          </div>
-          
-          <div className="flex items-center space-x-3">
-            {/* Search Bar */}
-            <div className="w-full max-w-[192px] hidden md:block">
+
+            {/* Search Bar (Moved to left side) */}
+            <div className="w-full max-w-[170px] sm:max-w-[200px] hidden md:block">
               <div className="relative group">
                 <input
                   type="text"
@@ -2002,77 +2124,103 @@ export default function App() {
                     }
                   }}
                   placeholder="Search or add word"
-                  className="w-full bg-zinc-900/50 border border-zinc-500 rounded-full py-1.5 pl-4 pr-10 text-sm text-zinc-300 focus:outline-none focus:border-white focus:bg-zinc-900 transition-all"
+                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-full h-8 pl-3.5 pr-8 text-xs text-zinc-300 focus:outline-none focus:border-zinc-500 focus:bg-zinc-900 transition-all"
                 />
                 <button
                   onClick={handleSearch}
                   disabled={isSearching}
-                  className={`absolute right-1 top-1/2 -translate-y-1/2 p-1.5 transition-colors ${
+                  className={`absolute right-1 top-1/2 -translate-y-1/2 p-1 transition-colors ${
                     isSearching ? 'text-emerald-500 animate-pulse' : 'text-zinc-500 hover:text-emerald-400'
                   }`}
                   title="Search or Add Word"
                 >
-                  <Search size={16} />
+                  <Search size={14} />
                 </button>
               </div>
             </div>
-            
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            {/* Auto Play: Single button (default 1x, click twice for 1.2x) */}
+            <button
+              onClick={handlePlayButtonClick}
+              className={`w-8 h-8 rounded-full border transition-all flex items-center justify-center relative select-none shrink-0 ${
+                isAutoPlaying
+                  ? 'border-emerald-500 text-emerald-400 bg-emerald-500/15 shadow-sm shadow-emerald-500/20'
+                  : 'border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 hover:bg-zinc-900'
+              }`}
+              title={
+                isAutoPlaying
+                  ? `循环播放中 (${autoPlaySpeed}x) - 单击暂停，点两下为1.2倍速`
+                  : `自动循环播放 (${autoPlaySpeed}x) - 单击开始，点两下为1.2倍速`
+              }
+            >
+              {isAutoPlaying ? (
+                <Pause size={15} className="fill-current animate-pulse text-emerald-400" />
+              ) : (
+                <Play size={15} className="fill-current ml-0.5" />
+              )}
+              <span className="absolute -bottom-1 -right-1 text-[8.5px] font-mono px-1 rounded-full bg-zinc-900 border border-zinc-700 text-emerald-400 font-bold leading-tight shadow">
+                {autoPlaySpeed}x
+              </span>
+            </button>
+
             <button
               onClick={() => setIsEbbinghausMode(!isEbbinghausMode)}
-              className={`p-2 rounded-full border transition-colors flex items-center justify-center ${
+              className={`w-8 h-8 rounded-full border transition-colors flex items-center justify-center shrink-0 ${
                 isEbbinghausMode
                   ? 'border-amber-500 text-amber-400 bg-amber-500/10'
                   : 'border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 hover:bg-zinc-900'
               }`}
               title={isEbbinghausMode ? "Disable Ebbinghaus Mode" : "Enable Ebbinghaus Mode"}
             >
-              <Brain size={18} />
+              <Brain size={16} />
             </button>
             <button
               onClick={() => setIsDictationMode(!isDictationMode)}
-              className={`p-2 rounded-full border transition-colors flex items-center justify-center ${
+              className={`w-8 h-8 rounded-full border transition-colors flex items-center justify-center shrink-0 ${
                 isDictationMode
                   ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10'
                   : 'border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 hover:bg-zinc-900'
               }`}
               title={isDictationMode ? "Disable Dictation Mode" : "Enable Dictation Mode"}
             >
-              <Headphones size={18} />
+              <Headphones size={16} />
             </button>
             <button
               onClick={() => {
                 if (isGameMode) setIsGameMode(false);
                 else startGame();
               }}
-              className={`p-2 rounded-full border transition-colors flex items-center justify-center ${
+              className={`w-8 h-8 rounded-full border transition-colors flex items-center justify-center shrink-0 ${
                 isGameMode
                   ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
                   : 'border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 hover:bg-zinc-900'
               }`}
               title="Word Game"
             >
-              <Gamepad2 size={18} />
+              <Gamepad2 size={16} />
             </button>
             <button
               onClick={() => setShowRootDetective(true)}
-              className="p-2 rounded-full border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 hover:bg-zinc-900 transition-colors flex items-center justify-center"
+              className="w-8 h-8 rounded-full border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 hover:bg-zinc-900 transition-colors flex items-center justify-center shrink-0"
               title="Root Detective"
             >
-              <BookOpen size={18} />
+              <BookOpen size={16} />
             </button>
             <button
               onClick={() => {
                 flushStudyTime();
                 setShowStats(true);
               }}
-              className="p-2 rounded-full border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 hover:bg-zinc-900 transition-colors flex items-center justify-center"
+              className="w-8 h-8 rounded-full border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 hover:bg-zinc-900 transition-colors flex items-center justify-center shrink-0"
               title="学习概览与统计"
             >
-              <BarChart2 size={18} />
+              <BarChart2 size={16} />
             </button>
             <button
               onClick={() => setShowImport(true)}
-              className="text-sm font-medium text-zinc-400 hover:text-white transition-colors px-4 py-2 rounded-full border border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900"
+              className="text-xs font-medium text-zinc-300 hover:text-white transition-colors px-3 py-1.5 rounded-full border border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900 h-8 flex items-center shrink-0"
             >
               Import Data
             </button>
@@ -2290,7 +2438,29 @@ export default function App() {
                     )}
                     {currentWord.prefix && (currentWord.root_core || currentWord.suffix) && <span> + </span>}
                     {currentWord.root_core && (
-                      <span>{currentWord.root_core} {currentWord.root_meaning && `(${currentWord.root_meaning})`}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setSelectedRootInfo({
+                            rootCore: currentWord.root_core!,
+                            rootMeaning: currentWord.root_meaning,
+                          });
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 hover:text-indigo-200 transition-all cursor-pointer group shadow-sm text-sm font-mono select-none"
+                        title="点击查看所有包含该词根的单词"
+                      >
+                        <Sparkles size={11} className="text-indigo-400 group-hover:scale-110 transition-transform" />
+                        <span className="font-bold underline decoration-indigo-400/50 underline-offset-2">
+                          {currentWord.root_core}
+                        </span>
+                        {currentWord.root_meaning && (
+                          <span className="text-indigo-200/80 font-normal">
+                            ({currentWord.root_meaning})
+                          </span>
+                        )}
+                      </button>
                     )}
                     {currentWord.root_core && currentWord.suffix && <span> + </span>}
                     {currentWord.suffix && (
@@ -2882,6 +3052,23 @@ export default function App() {
           words={filteredWords} 
           allWords={words}
           onClose={() => setShowRootDetective(false)} 
+        />
+      )}
+
+      {selectedRootInfo && (
+        <SameRootWordsModal
+          rootCore={selectedRootInfo.rootCore}
+          rootMeaning={selectedRootInfo.rootMeaning}
+          currentWordId={currentWord?.id}
+          allWords={words}
+          onClose={() => setSelectedRootInfo(null)}
+          onSelectWord={(word) => {
+            setCurrentWord(word);
+            if (word.listName && word.listName !== activeList) {
+              setActiveList(word.listName);
+            }
+            showToast(`已切换至单词: "${word.word}"`);
+          }}
         />
       )}
 
