@@ -2426,6 +2426,7 @@ export default function App() {
         isOpen={showStats}
         onClose={() => setShowStats(false)}
         stats={stats}
+        words={words}
       />
 
       {/* Rename List Modal */}
