@@ -778,7 +778,7 @@ export default function App() {
     const currentWord = gameWords[currentGameIdx];
     if (!currentWord) return;
 
-    // 1. Put word into Ebbinghaus review list (reset stage to 0, mark error, reset completed flags, un-master)
+    // 1. Put word into Ebbinghaus review list (reset stage to 0, mark error, reset completed flags, un-master, mark peek penalty)
     const updatedWords = words.map(w => 
       w.id === currentWord.id 
         ? { 
@@ -789,12 +789,25 @@ export default function App() {
             is_completed_normal: false,
             is_completed_dictation: false,
             is_mastered: false,
+            peek_penalty: true,
+            game_correct_streak: 0,
             listName: w.listName === 'Mastered Words' ? 'Default List' : (w.listName || 'Default List')
           } 
         : w
     );
     setWords(updatedWords);
     saveWords(updatedWords);
+
+    // Update in gameWords list as well
+    setGameWords(prev => prev.map((w, idx) => {
+      if (idx !== currentGameIdx) return w;
+      return {
+        ...w,
+        peek_penalty: true,
+        game_correct_streak: 0,
+        is_mastered: false,
+      };
+    }));
 
     // 2. Add word to the next 3 games
     setGameRepeatWords(prev => {
@@ -807,7 +820,7 @@ export default function App() {
     wordErrorOccurredRef.current = true;
     if (!peekedThisWordRef.current.has(currentWord.id)) {
       peekedThisWordRef.current.add(currentWord.id);
-      showToast(`"${currentWord.word}" 已加入艾宾浩斯清单及接下来的3组游戏`);
+      showToast(`"${currentWord.word}" 已使用提示：将连出3组游戏，需连续6次完全正确拼出方可掌握`);
     }
   }, [gameWords, currentGameIdx, words, showToast]);
 
@@ -864,10 +877,23 @@ export default function App() {
         const currentWordInGame = gameWords[currentGameIdx];
         const hasPeeked = peekedThisWordRef.current.has(currentWordInGame.id);
         const hadErrorOrPeek = hasPeeked || wordErrorOccurredRef.current;
+        const isPenalty = currentWordInGame.peek_penalty || hasPeeked;
 
-        const prevStreak = currentWordInGame.game_correct_streak || 0;
-        const newStreak = hadErrorOrPeek ? 0 : prevStreak + 1;
-        const autoMastered = !currentWordInGame.is_mastered && newStreak >= 6;
+        let newStreak = 0;
+        let autoMastered = false;
+
+        if (hadErrorOrPeek) {
+          // Typed wrong letter or used peek during this round: streak resets to 0
+          newStreak = 0;
+        } else {
+          // Completely correct without mistakes and without peek
+          const prevStreak = currentWordInGame.game_correct_streak || 0;
+          newStreak = prevStreak + 1;
+          const targetStreak = isPenalty ? 6 : 3;
+          if (newStreak >= targetStreak) {
+            autoMastered = true;
+          }
+        }
 
         const updatedWords = words.map(w => {
           if (w.id !== currentWordInGame.id) return w;
@@ -886,6 +912,7 @@ export default function App() {
             is_completed_normal: true,
             is_completed_dictation: true,
             game_correct_streak: newStreak,
+            peek_penalty: autoMastered ? false : (isPenalty ? true : w.peek_penalty),
             is_mastered: autoMastered ? true : w.is_mastered,
             previousListName: autoMastered 
               ? ((w.listName && w.listName !== 'Mastered Words') ? w.listName : (w.previousListName || 'Default List'))
@@ -902,6 +929,7 @@ export default function App() {
           return {
             ...w,
             game_correct_streak: newStreak,
+            peek_penalty: autoMastered ? false : (isPenalty ? true : w.peek_penalty),
             is_mastered: autoMastered ? true : w.is_mastered,
             listName: autoMastered ? 'Mastered Words' : w.listName,
           };
@@ -913,7 +941,11 @@ export default function App() {
             spread: 70,
             origin: { y: 0.6 }
           });
-          showToast(`🎉 "${currentWordInGame.word}" 连续拼写正确 6 次，已自动标记为「已掌握」！`);
+          if (isPenalty) {
+            showToast(`🎉 "${currentWordInGame.word}" 连续 6 次完全正确拼出，已自动标记为「已掌握」！`);
+          } else {
+            showToast(`🎉 "${currentWordInGame.word}" 连续 3 次完全正确拼出，已自动标记为「已掌握」！`);
+          }
           // Remove from gameRepeatWords if present
           setGameRepeatWords(prev => {
             if (prev[currentWordInGame.id]) {
@@ -938,6 +970,7 @@ export default function App() {
             is_completed_normal: true,
             is_completed_dictation: true,
             game_correct_streak: newStreak,
+            peek_penalty: autoMastered ? false : (isPenalty ? true : currentWord.peek_penalty),
             is_mastered: autoMastered ? true : currentWord.is_mastered,
             previousListName: autoMastered
               ? ((currentWord.listName && currentWord.listName !== 'Mastered Words') ? currentWord.listName : (currentWord.previousListName || 'Default List'))
@@ -1794,6 +1827,7 @@ export default function App() {
             last_review_time: 0,
             has_error: false,
             game_correct_streak: 0,
+            peek_penalty: false,
             dictation_correct_streak: 0
           } 
         : w
@@ -2718,9 +2752,13 @@ export default function App() {
                         <span className="text-emerald-400 text-xs flex items-center gap-1 font-sans font-medium">
                           <CheckCircle2 size={13} /> 已掌握
                         </span>
+                      ) : (gameWords[currentGameIdx]?.peek_penalty || peekedThisWordRef.current.has(gameWords[currentGameIdx]?.id)) ? (
+                        <span className="text-amber-400/90 text-xs font-sans font-medium">
+                          提示惩罚 · 连对: {gameWords[currentGameIdx]?.game_correct_streak || 0} / 6
+                        </span>
                       ) : (
                         <span className="text-amber-400/90 text-xs font-sans font-medium">
-                          连续正确: {gameWords[currentGameIdx]?.game_correct_streak || 0} / 6
+                          连对: {gameWords[currentGameIdx]?.game_correct_streak || 0} / 3
                         </span>
                       )}
                     </div>
