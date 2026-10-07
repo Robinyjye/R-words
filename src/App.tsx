@@ -2925,7 +2925,7 @@ export default function App() {
                         </span>
                       ) : (gameWords[currentGameIdx]?.peek_penalty || peekedThisWordRef.current.has(gameWords[currentGameIdx]?.id)) ? (
                         <span className="text-amber-400/90 text-xs font-sans font-medium">
-                          提示惩罚 · 连对: {gameWords[currentGameIdx]?.game_correct_streak || 0} / 6
+                          提示奖赏 · 连对: {gameWords[currentGameIdx]?.game_correct_streak || 0} / 6
                         </span>
                       ) : (
                         <span className="text-amber-400/90 text-xs font-sans font-medium">
