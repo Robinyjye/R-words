@@ -12,6 +12,7 @@ import { ImportModal } from './components/ImportModal';
 import { StatsModal } from './components/StatsModal';
 import { RootDetectiveGame } from './components/RootDetectiveGame';
 import { SameRootWordsModal } from './components/SameRootWordsModal';
+import { WordListModal } from './components/WordListModal';
 import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, Save, CopyX, BarChart2, Search, BookOpen, Sparkles, Loader2, Users, Undo2, Play, Pause } from 'lucide-react';
 import Papa from 'papaparse';
 import { motion, AnimatePresence } from 'motion/react';
@@ -316,6 +317,21 @@ export default function App() {
     return words.filter(w => (w.listName || 'Default List') === activeList);
   }, [words, activeList]);
 
+  // Count of words that share the same core root as currentWord
+  const currentWordSameRootCount = useMemo(() => {
+    if (!currentWord?.root_core) return 0;
+    const targetClean = currentWord.root_core.replace(/[^a-zA-Z0-9]/g, '').toLowerCase().trim();
+    const targetRaw = currentWord.root_core.toLowerCase().trim();
+    if (!targetClean && !targetRaw) return 0;
+
+    return words.filter(w => {
+      if (!w.root_core) return false;
+      const rClean = w.root_core.replace(/[^a-zA-Z0-9]/g, '').toLowerCase().trim();
+      const rRaw = w.root_core.toLowerCase().trim();
+      return rClean === targetClean || rRaw === targetRaw;
+    }).length;
+  }, [words, currentWord?.root_core]);
+
   // Game State
   const [isGameMode, setIsGameMode] = useState(false);
   const [playedGameWordIds, setPlayedGameWordIds] = useState<Set<string>>(() => {
@@ -345,6 +361,7 @@ export default function App() {
   const [gameStatus, setGameStatus] = useState<'playing' | 'correct' | 'finished'>('playing');
   const [showRootDetective, setShowRootDetective] = useState(false);
   const [selectedRootInfo, setSelectedRootInfo] = useState<{ rootCore: string; rootMeaning?: string } | null>(null);
+  const [showWordListModal, setShowWordListModal] = useState(false);
 
   // Auto-play list words and examples
   const [isAutoPlaying, setIsAutoPlaying] = useState<boolean>(false);
@@ -1972,6 +1989,37 @@ export default function App() {
     }, 200);
   }, [currentWord, words]);
 
+  const handleReturnWordFromList = useCallback((wordItem: WordState) => {
+    const targetList = (wordItem.previousListName && wordItem.previousListName !== 'Mastered Words')
+      ? wordItem.previousListName
+      : 'Default List';
+
+    const updatedWords = words.map(w => 
+      w.id === wordItem.id 
+        ? { 
+            ...w, 
+            is_mastered: false, 
+            listName: targetList,
+            is_completed_normal: false,
+            is_completed_dictation: false,
+            last_review_time: 0,
+            has_error: false,
+            game_correct_streak: 0,
+            peek_penalty: false,
+            dictation_correct_streak: 0
+          } 
+        : w
+    );
+
+    setWords(updatedWords);
+    saveWords(updatedWords);
+    showToast(`已将 "${wordItem.word}" 原路返回至 "${targetList}" 列表`);
+
+    if (currentWord?.id === wordItem.id) {
+      setCurrentWord(prev => prev ? { ...prev, is_mastered: false, listName: targetList } : null);
+    }
+  }, [words, currentWord, showToast]);
+
   const renderInputFeedback = () => {
     if (!currentWord) return null;
     
@@ -2023,16 +2071,13 @@ export default function App() {
             </div>
 
             <div 
-              className={`flex items-center space-x-1.5 transition-colors ${masteredCount > 0 ? 'cursor-pointer hover:opacity-80' : ''}`}
-              onClick={() => {
-                if (masteredCount > 0) {
-                  setActiveList('Mastered Words');
-                }
-              }}
+              className="flex items-center space-x-1.5 transition-colors cursor-pointer hover:opacity-80 group select-none"
+              onClick={() => setShowWordListModal(true)}
+              title="点击查看单词列表速览 (纯词自测模式 · 可一键返回原列表)"
             >
-              <Database size={15} className="text-white shrink-0" />
+              <Database size={15} className="text-white shrink-0 group-hover:text-emerald-400 transition-colors" />
               <div className="flex flex-col whitespace-nowrap">
-                <span className="text-[10px] font-bold tracking-wider leading-tight mb-0.5 text-white">
+                <span className="text-[10px] font-bold tracking-wider leading-tight mb-0.5 text-white group-hover:text-emerald-300 transition-colors">
                   total: {masteredCount}/{words.length}
                 </span>
                 <span className="text-[10px] font-medium tracking-wide text-zinc-300 leading-tight">
@@ -2448,8 +2493,8 @@ export default function App() {
                             rootMeaning: currentWord.root_meaning,
                           });
                         }}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 hover:text-indigo-200 transition-all cursor-pointer group shadow-sm text-sm font-mono select-none"
-                        title="点击查看所有包含该词根的单词"
+                        className="relative inline-flex items-center gap-1 px-2.5 py-0.5 mr-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 hover:text-indigo-200 transition-all cursor-pointer group shadow-sm text-sm font-mono select-none"
+                        title={`该词根共收录 ${currentWordSameRootCount} 个单词，点击查看完整列表`}
                       >
                         <Sparkles size={11} className="text-indigo-400 group-hover:scale-110 transition-transform" />
                         <span className="font-bold underline decoration-indigo-400/50 underline-offset-2">
@@ -2458,6 +2503,14 @@ export default function App() {
                         {currentWord.root_meaning && (
                           <span className="text-indigo-200/80 font-normal">
                             ({currentWord.root_meaning})
+                          </span>
+                        )}
+                        {currentWordSameRootCount > 0 && (
+                          <span 
+                            className="absolute -top-2 -right-2 min-w-[17px] h-[17px] px-1 bg-indigo-600 text-white border border-indigo-400/50 rounded-full text-[10px] font-mono font-bold flex items-center justify-center shadow-md shadow-indigo-950/60 group-hover:bg-indigo-500 transition-colors"
+                            title={`该词根共收录 ${currentWordSameRootCount} 个单词`}
+                          >
+                            {currentWordSameRootCount}
                           </span>
                         )}
                       </button>
@@ -3069,6 +3122,24 @@ export default function App() {
             }
             showToast(`已切换至单词: "${word.word}"`);
           }}
+        />
+      )}
+
+      {showWordListModal && (
+        <WordListModal
+          isOpen={showWordListModal}
+          onClose={() => setShowWordListModal(false)}
+          activeList={activeList}
+          allWords={words}
+          currentListWords={filteredWords}
+          onSelectWord={(word) => {
+            setCurrentWord(word);
+            if (word.listName && word.listName !== activeList) {
+              setActiveList(word.listName);
+            }
+            showToast(`已切换至单词: "${word.word}"`);
+          }}
+          onReturnWord={handleReturnWordFromList}
         />
       )}
 
