@@ -11,7 +11,7 @@ import { playKeystrokeSound, playSuccessSound, speakWord, speakWordAndExample, p
 import { ImportModal } from './components/ImportModal';
 import { StatsModal } from './components/StatsModal';
 import { RootDetectiveGame } from './components/RootDetectiveGame';
-import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, Save, CopyX, BarChart2, Search, BookOpen, Sparkles, Loader2, Users } from 'lucide-react';
+import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, Save, CopyX, BarChart2, Search, BookOpen, Sparkles, Loader2, Users, Undo2 } from 'lucide-react';
 import Papa from 'papaparse';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
@@ -248,7 +248,13 @@ export default function App() {
     const needsMigration = words.some(w => w.is_mastered && w.listName !== 'Mastered Words');
     if (needsMigration) {
       const migratedWords = words.map(w => 
-        w.is_mastered ? { ...w, listName: 'Mastered Words' } : w
+        w.is_mastered 
+          ? { 
+              ...w, 
+              previousListName: (w.listName && w.listName !== 'Mastered Words') ? w.listName : (w.previousListName || 'Default List'),
+              listName: 'Mastered Words' 
+            } 
+          : w
       );
       setWords(migratedWords);
       saveWords(migratedWords);
@@ -326,6 +332,7 @@ export default function App() {
     return {};
   });
   const peekedThisWordRef = useRef<Set<string>>(new Set());
+  const wordErrorOccurredRef = useRef<boolean>(false);
   const [peekedBlankIdx, setPeekedBlankIdx] = useState<number | null>(null);
   const [gameWords, setGameWords] = useState<WordState[]>([]);
   const [currentGameIdx, setCurrentGameIdx] = useState(0);
@@ -628,6 +635,7 @@ export default function App() {
     setGameBlanks(selectedBlanks);
     setGameInput(new Array(selectedBlanks.length).fill(''));
     setPeekedBlankIdx(null);
+    wordErrorOccurredRef.current = false;
     setGameStatus('playing');
   }, []);
 
@@ -636,21 +644,22 @@ export default function App() {
       window.speechSynthesis.cancel();
     }
 
-    const baseWords = filteredWords.length > 0 ? filteredWords : words;
-    if (baseWords.length === 0) {
-      showToast("当前没有单词，无法开始游戏。");
+    // STRICT: Only words from the currently selected word list
+    const currentListWords = words.filter(w => (w.listName || 'Default List') === activeList);
+    if (currentListWords.length === 0) {
+      showToast(`当前选中的列表 "${activeList}" 没有单词，无法开始游戏。`);
       return;
     }
 
     const now = Date.now();
     const isMasteredList = activeList === 'Mastered Words';
 
-    // 1. Mandatory repeat words that belong to the current list
-    const repeatWords = baseWords.filter(w => (gameRepeatWords[w.id] || 0) > 0);
+    // 1. Mandatory repeat words that belong strictly to the current active list
+    const repeatWords = currentListWords.filter(w => (gameRepeatWords[w.id] || 0) > 0);
     const repeatWordIds = new Set(repeatWords.map(w => w.id));
 
-    // 2. Ebbinghaus words due for practice (isWordDue, or error words)
-    const ebbinghausDueWords = baseWords.filter(w => 
+    // 2. Ebbinghaus words due for practice within the current active list
+    const ebbinghausDueWords = currentListWords.filter(w => 
       !repeatWordIds.has(w.id) && (
         isMasteredList 
           ? true 
@@ -688,44 +697,33 @@ export default function App() {
     const prioritizedIds = new Set(prioritizedWords.map(w => w.id));
 
     let selectedWords: WordState[] = [];
-    if (prioritizedWords.length >= 20) {
-      selectedWords = prioritizedWords.slice(0, 20);
+    const maxGameWords = Math.min(20, currentListWords.length);
+
+    if (prioritizedWords.length >= maxGameWords) {
+      selectedWords = prioritizedWords.slice(0, maxGameWords);
     } else {
-      const slotsNeeded = 20 - prioritizedWords.length;
+      const slotsNeeded = maxGameWords - prioritizedWords.length;
       
-      // 3. Normal available words in baseWords not yet played and not in prioritized list
-      let availableWords = baseWords.filter(w => !prioritizedIds.has(w.id) && !playedGameWordIds.has(w.id));
+      // 3. Normal available words strictly from currentListWords not yet played and not in prioritized list
+      let availableWords = currentListWords.filter(w => !prioritizedIds.has(w.id) && !playedGameWordIds.has(w.id));
       
-      // If all unplayed words have been exhausted, reset played history
+      // If all unplayed words in the current list have been exhausted, reset played history for this list
       if (availableWords.length === 0) {
-        const currentListIds = new Set(baseWords.map(w => w.id));
+        const currentListIds = new Set(currentListWords.map(w => w.id));
         setPlayedGameWordIds(prev => {
           const next = new Set(prev);
           currentListIds.forEach(id => next.delete(id));
           localStorage.setItem('playedGameWordIds', JSON.stringify(Array.from(next)));
           return next;
         });
-        availableWords = baseWords.filter(w => !prioritizedIds.has(w.id));
-      }
-
-      // If baseWords still doesn't have enough and we have other lists with due words
-      let additionalFromOtherLists: WordState[] = [];
-      if (availableWords.length < slotsNeeded && filteredWords.length > 0) {
-        const remainingNeeded = slotsNeeded - availableWords.length;
-        const otherDueWords = words.filter(w => 
-          !w.is_mastered && 
-          !prioritizedIds.has(w.id) && 
-          (w.listName || 'Default List') !== activeList && 
-          isWordDue(w, isDictationMode, now)
-        );
-        additionalFromOtherLists = [...otherDueWords].sort(() => Math.random() - 0.5).slice(0, remainingNeeded);
+        availableWords = currentListWords.filter(w => !prioritizedIds.has(w.id));
       }
 
       const chosenAdditional = [...availableWords]
         .sort(() => Math.random() - 0.5)
         .slice(0, slotsNeeded);
 
-      selectedWords = [...prioritizedWords, ...chosenAdditional, ...additionalFromOtherLists].slice(0, 20);
+      selectedWords = [...prioritizedWords, ...chosenAdditional].slice(0, maxGameWords);
     }
 
     // Combine and shuffle words
@@ -761,11 +759,12 @@ export default function App() {
       (gameRepeatWords[w.id] || 0) > 0 || isWordDue(w, isDictationMode, now)
     ).length;
     if (dueCountInGame > 0) {
-      showToast(`已优先挑选 ${dueCountInGame} 个艾宾浩斯待复习单词`);
+      showToast(`已优先挑选当前列表中的 ${dueCountInGame} 个待复习单词`);
     }
 
     peekedThisWordRef.current.clear();
     setPeekedBlankIdx(null);
+    wordErrorOccurredRef.current = false;
     setGameWords(shuffled);
     setCurrentGameIdx(0);
     setCombo(0);
@@ -773,7 +772,7 @@ export default function App() {
     setIsGameMode(true);
     setGameStatus('playing');
     setupWordGame(shuffled[0]);
-  }, [filteredWords, words, activeList, isDictationMode, playedGameWordIds, gameRepeatWords, setupWordGame, showToast]);
+  }, [words, activeList, isDictationMode, playedGameWordIds, gameRepeatWords, setupWordGame, showToast]);
 
   const handleGamePeek = useCallback(() => {
     const currentWord = gameWords[currentGameIdx];
@@ -805,6 +804,7 @@ export default function App() {
     });
 
     // Notify user once per word in current session
+    wordErrorOccurredRef.current = true;
     if (!peekedThisWordRef.current.has(currentWord.id)) {
       peekedThisWordRef.current.add(currentWord.id);
       showToast(`"${currentWord.word}" 已加入艾宾浩斯清单及接下来的3组游戏`);
@@ -863,6 +863,11 @@ export default function App() {
 
         const currentWordInGame = gameWords[currentGameIdx];
         const hasPeeked = peekedThisWordRef.current.has(currentWordInGame.id);
+        const hadErrorOrPeek = hasPeeked || wordErrorOccurredRef.current;
+
+        const prevStreak = currentWordInGame.game_correct_streak || 0;
+        const newStreak = hadErrorOrPeek ? 0 : prevStreak + 1;
+        const autoMastered = !currentWordInGame.is_mastered && newStreak >= 6;
 
         const updatedWords = words.map(w => {
           if (w.id !== currentWordInGame.id) return w;
@@ -880,10 +885,46 @@ export default function App() {
             has_error: hasPeeked,
             is_completed_normal: true,
             is_completed_dictation: true,
+            game_correct_streak: newStreak,
+            is_mastered: autoMastered ? true : w.is_mastered,
+            previousListName: autoMastered 
+              ? ((w.listName && w.listName !== 'Mastered Words') ? w.listName : (w.previousListName || 'Default List'))
+              : w.previousListName,
+            listName: autoMastered ? 'Mastered Words' : w.listName,
           };
         });
         setWords(updatedWords);
         saveWords(updatedWords);
+
+        // Update in gameWords list as well
+        setGameWords(prev => prev.map((w, idx) => {
+          if (idx !== currentGameIdx) return w;
+          return {
+            ...w,
+            game_correct_streak: newStreak,
+            is_mastered: autoMastered ? true : w.is_mastered,
+            listName: autoMastered ? 'Mastered Words' : w.listName,
+          };
+        }));
+
+        if (autoMastered) {
+          confetti({
+            particleCount: 80,
+            spread: 70,
+            origin: { y: 0.6 }
+          });
+          showToast(`🎉 "${currentWordInGame.word}" 连续拼写正确 6 次，已自动标记为「已掌握」！`);
+          // Remove from gameRepeatWords if present
+          setGameRepeatWords(prev => {
+            if (prev[currentWordInGame.id]) {
+              const next = { ...prev };
+              delete next[currentWordInGame.id];
+              localStorage.setItem('ebbinghaus_game_repeat_words', JSON.stringify(next));
+              return next;
+            }
+            return prev;
+          });
+        }
 
         // Also keep currentWord in sync if it is the word being played
         if (currentWord && currentWord.id === currentWordInGame.id) {
@@ -896,6 +937,12 @@ export default function App() {
             has_error: hasPeeked,
             is_completed_normal: true,
             is_completed_dictation: true,
+            game_correct_streak: newStreak,
+            is_mastered: autoMastered ? true : currentWord.is_mastered,
+            previousListName: autoMastered
+              ? ((currentWord.listName && currentWord.listName !== 'Mastered Words') ? currentWord.listName : (currentWord.previousListName || 'Default List'))
+              : currentWord.previousListName,
+            listName: autoMastered ? 'Mastered Words' : currentWord.listName,
           });
         }
 
@@ -925,7 +972,8 @@ export default function App() {
         }, delay);
       }
     } else {
-      // Wrong keystroke: reset combo and play sound, do NOT add to Ebbinghaus
+      // Wrong keystroke: reset combo, mark error for this word streak and play sound
+      wordErrorOccurredRef.current = true;
       setCombo(0);
       playKeystrokeSound(char);
     }
@@ -1246,6 +1294,21 @@ export default function App() {
       });
     }
 
+    // Dictation mode consecutive correct streak calculation
+    let dictationStreak = currentWord.dictation_correct_streak || 0;
+    let autoMastered = false;
+
+    if (isDictationMode) {
+      if (isErrorThisTime) {
+        dictationStreak = 0;
+      } else {
+        dictationStreak += 1;
+        if (!currentWord.is_mastered && dictationStreak >= 3) {
+          autoMastered = true;
+        }
+      }
+    }
+
     // If we are in review phase (all completed), and this was successful without error/hint, clear has_error
     const allOthersCompleted = filteredWords.every(w => w.id === currentWord.id || (isDictationMode ? w.is_completed_dictation : w.is_completed_normal));
     const shouldClearError = allOthersCompleted && !isErrorThisTime;
@@ -1257,6 +1320,12 @@ export default function App() {
       has_error: shouldClearError ? false : (isErrorThisTime || currentWord.has_error),
       is_completed_normal: isDictationMode ? currentWord.is_completed_normal : true,
       is_completed_dictation: isDictationMode ? true : currentWord.is_completed_dictation,
+      dictation_correct_streak: isDictationMode ? dictationStreak : currentWord.dictation_correct_streak,
+      is_mastered: autoMastered ? true : currentWord.is_mastered,
+      previousListName: autoMastered
+        ? ((currentWord.listName && currentWord.listName !== 'Mastered Words') ? currentWord.listName : (currentWord.previousListName || 'Default List'))
+        : currentWord.previousListName,
+      listName: autoMastered ? 'Mastered Words' : currentWord.listName,
       ebbinghaus_stage: isErrorThisTime 
         ? Math.max(0, (currentWord.ebbinghaus_stage || 0) - 1) 
         : Math.min(9, (currentWord.ebbinghaus_stage || 0) + 1),
@@ -1265,6 +1334,15 @@ export default function App() {
     const updatedWords = words.map(w => w.id === currentWord.id ? updatedWord : w);
     setWords(updatedWords);
     saveWords(updatedWords);
+
+    if (autoMastered) {
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
+      showToast(`🎉 "${currentWord.word}" 听写连续拼写正确 3 次，已自动标记为「已掌握」！`);
+    }
 
     // Update stats
     const today = new Date().toISOString().split('T')[0];
@@ -1287,13 +1365,20 @@ export default function App() {
 
     // Pause before next word
     setTimeout(() => {
+      if (autoMastered) {
+        setHistory(prev => {
+          if (prev[prev.length - 1] === currentWord.id) return prev;
+          return [...prev, currentWord.id];
+        });
+        setCurrentWord(null);
+      }
       setIsTransitioning(false);
       setInput('');
       setIsViewingHistory(false);
       setHasError(false);
       setIsHinted(false);
     }, 500);
-  }, [currentWord, words, isDictationMode, hasError, isHinted, filteredWords]);
+  }, [currentWord, words, isDictationMode, hasError, isHinted, filteredWords, showToast]);
 
   const handleRemoveDuplicates = () => {
     if (words.length === 0) return;
@@ -1662,7 +1747,14 @@ export default function App() {
     setIsTransitioning(true);
     
     const updatedWords = words.map(w => 
-      w.id === currentWord.id ? { ...w, is_mastered: true, listName: 'Mastered Words' } : w
+      w.id === currentWord.id 
+        ? { 
+            ...w, 
+            is_mastered: true, 
+            previousListName: (w.listName && w.listName !== 'Mastered Words') ? w.listName : (w.previousListName || 'Default List'),
+            listName: 'Mastered Words' 
+          } 
+        : w
     );
     
     setWords(updatedWords);
@@ -1670,6 +1762,47 @@ export default function App() {
     showToast(`已标记 "${currentWord.word}" 为已学会，并移至 "Mastered Words" 列表`);
     
     // Transition to next word manually instead of calling handleSkip to avoid state race
+    setTimeout(() => {
+      setHistory(prev => {
+        if (prev[prev.length - 1] === currentWord.id) return prev;
+        return [...prev, currentWord.id];
+      });
+      setCurrentWord(null);
+      setIsTransitioning(false);
+      setInput('');
+      setIsViewingHistory(false);
+    }, 200);
+  }, [currentWord, words]);
+
+  const handleReturnToPreviousList = useCallback(() => {
+    if (!currentWord) return;
+
+    const targetList = (currentWord.previousListName && currentWord.previousListName !== 'Mastered Words')
+      ? currentWord.previousListName
+      : 'Default List';
+
+    setIsTransitioning(true);
+
+    const updatedWords = words.map(w => 
+      w.id === currentWord.id 
+        ? { 
+            ...w, 
+            is_mastered: false, 
+            listName: targetList,
+            is_completed_normal: false,
+            is_completed_dictation: false,
+            last_review_time: 0,
+            has_error: false,
+            game_correct_streak: 0,
+            dictation_correct_streak: 0
+          } 
+        : w
+    );
+
+    setWords(updatedWords);
+    saveWords(updatedWords);
+    showToast(`已将 "${currentWord.word}" 原路返回至 "${targetList}" 列表`);
+
     setTimeout(() => {
       setHistory(prev => {
         if (prev[prev.length - 1] === currentWord.id) return prev;
@@ -2016,7 +2149,19 @@ export default function App() {
 
               {/* Word Actions */}
               <div className="flex justify-center items-center space-x-4 mt-8 mb-8">
-                {!currentWord.is_mastered && activeList !== 'Mastered Words' && (
+                {currentWord.is_mastered || activeList === 'Mastered Words' ? (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleReturnToPreviousList();
+                    }}
+                    className="p-1.5 text-zinc-500 hover:text-amber-400 hover:bg-amber-400/10 rounded-full transition-colors focus:outline-none"
+                    title={`原路返回到 "${(currentWord.previousListName && currentWord.previousListName !== 'Mastered Words') ? currentWord.previousListName : 'Default List'}" 列表`}
+                    tabIndex={-1}
+                  >
+                    <Undo2 size={14} />
+                  </button>
+                ) : (
                   <button
                     onClick={(e) => {
                       e.preventDefault();
@@ -2060,6 +2205,11 @@ export default function App() {
                   {currentWord.part_of_speech && (
                     <span className="text-xs font-mono lowercase tracking-widest text-white/80 bg-emerald-400/10 px-3 py-1 rounded-full">
                       {currentWord.part_of_speech}
+                    </span>
+                  )}
+                  {isDictationMode && (
+                    <span className="text-xs font-sans text-amber-400/90 bg-amber-400/10 px-2.5 py-0.5 rounded-full font-medium">
+                      听写连对: {currentWord.dictation_correct_streak || 0} / 3
                     </span>
                   )}
                   {currentWord.phonetic && (
@@ -2394,10 +2544,14 @@ export default function App() {
                       checked={editingWordData.is_mastered || false}
                       onChange={(e) => {
                         const isMastered = e.target.checked;
+                        const fallbackPrevList = (editingWordData.previousListName && editingWordData.previousListName !== 'Mastered Words')
+                          ? editingWordData.previousListName
+                          : ((editingWordData.listName && editingWordData.listName !== 'Mastered Words') ? editingWordData.listName : 'Default List');
                         setEditingWordData({ 
                           ...editingWordData, 
                           is_mastered: isMastered,
-                          listName: isMastered ? 'Mastered Words' : (editingWordData.listName === 'Mastered Words' ? 'Default List' : editingWordData.listName)
+                          previousListName: isMastered ? fallbackPrevList : editingWordData.previousListName,
+                          listName: isMastered ? 'Mastered Words' : (editingWordData.listName === 'Mastered Words' ? fallbackPrevList : editingWordData.listName)
                         });
                       }}
                       className="w-4 h-4 bg-zinc-950 border-zinc-800 rounded text-emerald-500 focus:ring-emerald-500/50"
@@ -2558,8 +2712,17 @@ export default function App() {
               ) : (
                 <>
                   <div className="mb-12 max-w-2xl mx-auto">
-                    <div className="text-zinc-500 font-mono text-sm mb-2">
-                      WORD {currentGameIdx + 1} / {gameWords.length}
+                    <div className="flex items-center justify-between text-zinc-500 font-mono text-sm mb-2">
+                      <span>WORD {currentGameIdx + 1} / {gameWords.length}</span>
+                      {gameWords[currentGameIdx]?.is_mastered ? (
+                        <span className="text-emerald-400 text-xs flex items-center gap-1 font-sans font-medium">
+                          <CheckCircle2 size={13} /> 已掌握
+                        </span>
+                      ) : (
+                        <span className="text-amber-400/90 text-xs font-sans font-medium">
+                          连续正确: {gameWords[currentGameIdx]?.game_correct_streak || 0} / 6
+                        </span>
+                      )}
                     </div>
                     <div className="h-1 w-full bg-zinc-900 rounded-full overflow-hidden">
                       <div 

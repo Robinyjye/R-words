@@ -16,6 +16,7 @@ export interface WordData {
 export interface WordState extends WordData {
   id: string;
   listName?: string;
+  previousListName?: string;
   review_count: number;
   last_review_time: number | null;
   has_error?: boolean;
@@ -23,4 +24,6 @@ export interface WordState extends WordData {
   is_completed_dictation?: boolean;
   ebbinghaus_stage?: number; // 0 to N
   is_mastered?: boolean;
+  game_correct_streak?: number;
+  dictation_correct_streak?: number;
 }

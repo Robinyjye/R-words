@@ -193,9 +193,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
           }
 
           const isMastered = typeof item === 'object' ? (item.is_mastered === true || item['已学会'] === true || false) : false;
+          const origList = typeof item === 'object' ? (item['原列表名称'] || item.previousListName || item['列表名称'] || item.listName || existingWord?.previousListName || existingWord?.listName || finalListName) : (existingWord?.previousListName || existingWord?.listName || finalListName);
           const wordObj: WordState = {
             id: (typeof item === 'object' && item.id) || existingWord?.id || (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15)),
             listName: isMastered ? 'Mastered Words' : (typeof item === 'object' ? (item['列表名称'] || item.listName || existingWord?.listName || finalListName) : finalListName),
+            previousListName: isMastered ? (origList !== 'Mastered Words' ? origList : 'Default List') : (typeof item === 'object' ? (item.previousListName || existingWord?.previousListName) : existingWord?.previousListName),
             word: wordStr,
             part_of_speech: forceEnrich ? '' : (typeof item === 'object' ? (item['词性'] || item.part_of_speech || existingWord?.part_of_speech || '') : ''),
             phonetic: forceEnrich ? '' : (typeof item === 'object' ? (item['音标'] || item.phonetic || existingWord?.phonetic || '') : ''),
