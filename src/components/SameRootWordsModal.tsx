@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { X, Volume2, Sparkles, ArrowRight, CheckCircle2, Search, BookOpen, Layers } from 'lucide-react';
 import { WordState } from '../utils/word';
 import { speakWord } from '../utils/audio';
+import { generateExampleSentenceForWord } from '../utils/sentence';
 
 interface SameRootWordsModalProps {
   rootCore: string;
@@ -10,6 +11,7 @@ interface SameRootWordsModalProps {
   allWords: WordState[];
   onClose: () => void;
   onSelectWord: (word: WordState) => void;
+  onUpdateWord?: (word: WordState) => void;
 }
 
 export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
@@ -19,8 +21,10 @@ export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
   allWords,
   onClose,
   onSelectWord,
+  onUpdateWord,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
 
   // Handle ESC key to close
   useEffect(() => {
@@ -81,6 +85,50 @@ export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
       (w.phrase && w.phrase.toLowerCase().includes(q))
     );
   }, [matchingWords, searchTerm]);
+
+  // Handle generating example sentence on demand
+  const handleGenerateSentence = async (wordItem: WordState) => {
+    if (generatingIds.has(wordItem.id)) return;
+    setGeneratingIds(prev => new Set(prev).add(wordItem.id));
+    try {
+      const res = await generateExampleSentenceForWord(wordItem.word, wordItem.meaning, wordItem.part_of_speech);
+      if (res.example_sentence && onUpdateWord) {
+        onUpdateWord({
+          ...wordItem,
+          example_sentence: res.example_sentence,
+          phrase: wordItem.phrase || res.phrase
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setGeneratingIds(prev => {
+        const next = new Set(prev);
+        next.delete(wordItem.id);
+        return next;
+      });
+    }
+  };
+
+  // Automatically ensure all displayed words in this modal have example sentences
+  useEffect(() => {
+    let isCancelled = false;
+    displayedWords.forEach(async (w) => {
+      if (!w.example_sentence && onUpdateWord) {
+        const res = await generateExampleSentenceForWord(w.word, w.meaning, w.part_of_speech);
+        if (!isCancelled && res.example_sentence) {
+          onUpdateWord({
+            ...w,
+            example_sentence: res.example_sentence,
+            phrase: w.phrase || res.phrase
+          });
+        }
+      }
+    });
+    return () => {
+      isCancelled = true;
+    };
+  }, [displayedWords, onUpdateWord]);
 
   return (
     <div 
@@ -162,13 +210,13 @@ export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
                     onSelectWord(wordItem);
                     onClose();
                   }}
-                  className={`pt-2.5 first:pt-0 group p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                  className={`pt-2.5 first:pt-0 group p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col sm:flex-row sm:items-start justify-between gap-3 ${
                     isCurrent
                       ? 'bg-indigo-950/20 border-indigo-500/30 hover:border-indigo-500/50 hover:bg-indigo-950/30'
                       : 'bg-zinc-900/40 border-zinc-850 hover:border-zinc-700/80 hover:bg-zinc-900/80'
                   }`}
                 >
-                  <div className="space-y-1.5 flex-1 min-w-0">
+                  <div className="space-y-1.5 flex-1 min-w-0 text-left">
                     <div className="flex items-center flex-wrap gap-2">
                       <span className="font-mono text-base font-bold text-white group-hover:text-indigo-300 transition-colors">
                         {wordItem.word}
@@ -236,10 +284,61 @@ export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
                         )}
                       </div>
                     )}
+
+                    {/* Common Phrase & Example Sentence - Strictly Left-Aligned */}
+                    {(wordItem.phrase || wordItem.example_sentence || generatingIds.has(wordItem.id)) && (
+                      <div className="space-y-1 pt-1 text-left">
+                        {/* Common Phrase */}
+                        {wordItem.phrase && (
+                          <div className="text-xs text-emerald-400/90 font-medium flex items-center gap-1.5 text-left">
+                            <span className="text-[11px] text-zinc-500 font-sans font-normal shrink-0">搭配:</span>
+                            <span>{wordItem.phrase}</span>
+                          </div>
+                        )}
+
+                        {/* Example Sentence */}
+                        {wordItem.example_sentence ? (
+                          <div className="text-xs text-zinc-300 italic flex items-start gap-1.5 leading-relaxed text-left group/ex">
+                            <span className="text-[11px] text-zinc-500 font-sans not-italic font-normal shrink-0">例句:</span>
+                            <span className="flex-1 text-zinc-200">"{wordItem.example_sentence}"</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                speakWord(wordItem.example_sentence!);
+                              }}
+                              className="p-1 text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors shrink-0 -mt-0.5"
+                              title="朗读例句"
+                            >
+                              <Volume2 size={13} />
+                            </button>
+                          </div>
+                        ) : generatingIds.has(wordItem.id) ? (
+                          <div className="text-[11px] text-indigo-400/80 flex items-center gap-1.5 pt-0.5 text-left">
+                            <Sparkles size={11} className="animate-spin text-indigo-400 shrink-0" />
+                            <span>正在生成真实权威例句...</span>
+                          </div>
+                        ) : (
+                          <div className="pt-0.5 text-left">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleGenerateSentence(wordItem);
+                              }}
+                              className="inline-flex items-center gap-1 text-[11px] text-indigo-300 hover:text-indigo-200 bg-indigo-500/10 hover:bg-indigo-500/20 px-2 py-0.5 rounded-lg border border-indigo-500/20 transition-colors"
+                            >
+                              <Sparkles size={11} className="text-indigo-400" />
+                              <span>一键生成例句</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions on right */}
-                  <div className="flex items-center space-x-2 shrink-0 self-end sm:self-center">
+                  <div className="flex items-center space-x-2 shrink-0 self-end sm:self-start sm:pt-0.5">
                     <button
                       type="button"
                       onClick={(e) => {

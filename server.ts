@@ -148,6 +148,54 @@ async function startServer() {
     }
   });
 
+  // API route for generating example sentence and phrase
+  app.post("/api/generate-sentence", async (req, res) => {
+    const { word, meaning, part_of_speech } = req.body;
+    if (!word) {
+      return res.status(400).json({ error: "Word is required" });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey) {
+      try {
+        const { GoogleGenAI } = await import("@google/genai");
+        const ai = new GoogleGenAI({ apiKey });
+        const prompt = `Write an authentic, natural, and contemporary English example sentence and a common short phrase for the vocabulary word "${word}"${part_of_speech ? ` (${part_of_speech})` : ''}${meaning ? ` with Chinese meaning: "${meaning}"` : ''}.
+Return strictly JSON format:
+{
+  "example_sentence": "Your example sentence here.",
+  "phrase": "common phrase or collocation here"
+}`;
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json"
+          }
+        });
+
+        const text = response.text;
+        if (text) {
+          const parsed = JSON.parse(text);
+          return res.json({
+            success: true,
+            example_sentence: parsed.example_sentence,
+            phrase: parsed.phrase
+          });
+        }
+      } catch (err: any) {
+        console.error("Gemini example sentence error in server:", err);
+      }
+    }
+
+    // Fallback response if Gemini is not configured
+    res.json({
+      success: true,
+      example_sentence: `The concept of ${word} plays an essential role in contemporary discussions.`,
+      phrase: `${word} in context`
+    });
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

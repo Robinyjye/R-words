@@ -2020,6 +2020,17 @@ export default function App() {
     }
   }, [words, currentWord, showToast]);
 
+  const handleSaveWordData = useCallback((updatedWord: WordState) => {
+    setWords(prevWords => {
+      const nextWords = prevWords.map(w => w.id === updatedWord.id ? updatedWord : w);
+      saveWords(nextWords);
+      return nextWords;
+    });
+    if (currentWord?.id === updatedWord.id) {
+      setCurrentWord(updatedWord);
+    }
+  }, [currentWord]);
+
   const renderInputFeedback = () => {
     if (!currentWord) return null;
     
@@ -3122,6 +3133,7 @@ export default function App() {
             }
             showToast(`已切换至单词: "${word.word}"`);
           }}
+          onUpdateWord={handleSaveWordData}
         />
       )}
 

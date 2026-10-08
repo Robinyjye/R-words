@@ -157,9 +157,9 @@ export function StatsModal({ isOpen, onClose, stats, words = [] }: StatsModalPro
   // Learning Habit Analytics: Streaks, Best Days, and Habit Consistency
   const habitStats = useMemo(() => {
     const activeDates = new Set(
-      Object.keys(stats.daily).filter(date => {
+      Object.keys(stats.daily || {}).filter(date => {
         const d = stats.daily[date];
-        return (d.count > 0) || ((d.seconds || 0) > 60);
+        return (d.count > 0) || ((d.seconds || 0) > 0) || ((d.minutes || 0) > 0);
       })
     );
 
@@ -210,8 +210,9 @@ export function StatsModal({ isOpen, onClose, stats, words = [] }: StatsModalPro
       }
     });
 
-    const totalActiveDays = heatmapData.filter(d => d.count > 0 || d.minutes > 0).length;
-    const annualConsistencyRate = Math.round((totalActiveDays / 365) * 100);
+    const heatmapActiveDays = heatmapData.filter(d => d.count > 0 || d.minutes > 0).length;
+    const totalActiveDays = Math.max(activeDates.size, heatmapActiveDays, (stats.totalCount > 0 || (stats.totalMinutes || 0) > 0) ? 1 : 0);
+    const annualConsistencyRate = Math.min(100, Math.round((totalActiveDays / 365) * 100));
 
     return {
       currentStreak,
@@ -221,7 +222,7 @@ export function StatsModal({ isOpen, onClose, stats, words = [] }: StatsModalPro
       totalActiveDays,
       annualConsistencyRate,
     };
-  }, [stats.daily, heatmapData]);
+  }, [stats.daily, stats.totalCount, stats.totalMinutes, heatmapData]);
 
   // Ebbinghaus Review Stage Distribution Analysis
   const ebbinghausStages = useMemo(() => {
@@ -361,12 +362,12 @@ export function StatsModal({ isOpen, onClose, stats, words = [] }: StatsModalPro
                     icon: Layers
                   },
                   { 
-                    label: '连续打卡', 
-                    value: habitStats.currentStreak, 
+                    label: '学习总天数', 
+                    value: habitStats.totalActiveDays, 
                     unit: '天', 
                     color: 'text-orange-400',
-                    icon: Flame,
-                    tooltip: `历史最高连续打卡：${habitStats.maxStreak} 天`
+                    icon: Calendar,
+                    tooltip: `累计学习天数：${habitStats.totalActiveDays} 天 | 连续打卡：${habitStats.currentStreak} 天 (最高 ${habitStats.maxStreak} 天)`
                   },
                   { 
                     label: '抗遗忘指数', 
@@ -502,14 +503,14 @@ export function StatsModal({ isOpen, onClose, stats, words = [] }: StatsModalPro
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
                   <div className="bg-zinc-950/50 border border-zinc-900 p-4 rounded-2xl">
                     <div className="flex items-center gap-2 text-zinc-400 text-xs mb-1">
-                      <Flame size={14} className="text-orange-400" />
-                      当前连续打卡
+                      <Calendar size={14} className="text-orange-400" />
+                      学习总天数
                     </div>
                     <div className="text-xl font-bold font-mono text-white">
-                      {habitStats.currentStreak} <span className="text-xs font-normal text-zinc-400">天</span>
+                      {habitStats.totalActiveDays} <span className="text-xs font-normal text-zinc-400">天</span>
                     </div>
                     <div className="text-[10px] text-zinc-400 mt-0.5">
-                      最高连击: {habitStats.maxStreak} 天
+                      当前连续: {habitStats.currentStreak} 天 (最高 {habitStats.maxStreak} 天)
                     </div>
                   </div>
 

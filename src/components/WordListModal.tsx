@@ -51,22 +51,37 @@ export const WordListModal: React.FC<WordListModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  const masteredWords = useMemo(() => {
+  // Mastered words that were transferred specifically from the current active list
+  const currentListMasteredWords = useMemo(() => {
+    if (activeList === 'Mastered Words') {
+      return allWords.filter(w => w.is_mastered === true || w.listName === 'Mastered Words');
+    }
+    return allWords.filter(w => {
+      const isMastered = w.is_mastered === true || w.listName === 'Mastered Words';
+      if (!isMastered) return false;
+      return w.previousListName === activeList || (!w.previousListName && w.listName === activeList);
+    });
+  }, [allWords, activeList]);
+
+  // All mastered words across the entire library
+  const allMasteredWords = useMemo(() => {
     return allWords.filter(w => w.is_mastered === true || w.listName === 'Mastered Words');
   }, [allWords]);
+
+  const [masteredScope, setMasteredScope] = useState<'current' | 'all'>('current');
 
   // Source list depending on active tab
   const tabWords = useMemo(() => {
     switch (activeTab) {
       case 'mastered':
-        return masteredWords;
+        return masteredScope === 'all' ? allMasteredWords : currentListMasteredWords;
       case 'all':
         return allWords;
       case 'current':
       default:
         return currentListWords;
     }
-  }, [activeTab, masteredWords, allWords, currentListWords]);
+  }, [activeTab, masteredScope, allMasteredWords, currentListMasteredWords, allWords, currentListWords]);
 
   // Filtered by search
   const displayedWords = useMemo(() => {
@@ -147,17 +162,18 @@ export const WordListModal: React.FC<WordListModalProps> = ({
 
               <button
                 type="button"
-                onClick={() => { setActiveTab('mastered'); setSearch(''); }}
+                onClick={() => { setActiveTab('mastered'); setSearch(''); setMasteredScope('current'); }}
                 className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
                   activeTab === 'mastered'
                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold shadow-sm'
                     : 'text-zinc-400 hover:text-emerald-400'
                 }`}
+                title={`从当前列表 "${activeList}" 转移到已掌握单词的数量 (${currentListMasteredWords.length} 个)`}
               >
                 <CheckCircle2 size={13} />
                 <span>已掌握单词</span>
                 <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-zinc-950/60 text-emerald-300 font-bold">
-                  {masteredWords.length}
+                  {currentListMasteredWords.length}
                 </span>
               </button>
 
@@ -195,15 +211,53 @@ export const WordListModal: React.FC<WordListModalProps> = ({
           </div>
         </div>
 
-        {/* Search bar inside modal */}
-        <div className="px-5 sm:px-6 py-2.5 border-b border-zinc-900 bg-zinc-950/60">
+        {/* Search bar & scope filter inside modal */}
+        <div className="px-5 sm:px-6 py-2.5 border-b border-zinc-900 bg-zinc-950/60 space-y-2">
+          {activeTab === 'mastered' && activeList !== 'Mastered Words' && allMasteredWords.length > 0 && (
+            <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+              <div className="flex items-center gap-1 bg-zinc-900/90 p-0.5 rounded-xl border border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setMasteredScope('current')}
+                  className={`px-2.5 py-1 rounded-lg transition-colors ${
+                    masteredScope === 'current'
+                      ? 'bg-zinc-800 text-emerald-400 font-bold shadow-sm'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  从「{activeList}」转移已掌握 ({currentListMasteredWords.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMasteredScope('all')}
+                  className={`px-2.5 py-1 rounded-lg transition-colors ${
+                    masteredScope === 'all'
+                      ? 'bg-zinc-800 text-white font-bold shadow-sm'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  全库所有已掌握 ({allMasteredWords.length})
+                </button>
+              </div>
+              <span className="text-[11px] text-zinc-500 font-sans">
+                {masteredScope === 'current' ? `当前仅查看从「${activeList}」转移的单词` : '正在查看全库所有已掌握单词'}
+              </span>
+            </div>
+          )}
+
           <div className="relative">
             <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={`在 ${activeTab === 'mastered' ? '已掌握单词' : activeTab === 'all' ? '全部词库' : activeList} 中快速筛选...`}
+              placeholder={`在 ${
+                activeTab === 'mastered'
+                  ? (masteredScope === 'current' ? `从 ${activeList} 转移的已掌握单词` : '全库已掌握单词')
+                  : activeTab === 'all'
+                    ? '全部词库'
+                    : activeList
+              } 中快速筛选...`}
               className="w-full bg-zinc-900/80 border border-zinc-800 rounded-xl pl-10 pr-4 py-2 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50"
             />
           </div>
@@ -217,11 +271,17 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                 <BookOpen size={24} />
               </div>
               <h4 className="text-sm font-semibold text-zinc-300">
-                {search ? '未搜索到符合条件的单词' : activeTab === 'mastered' ? '暂无已掌握单词' : '该列表中暂无单词'}
+                {search 
+                  ? '未搜索到符合条件的单词' 
+                  : activeTab === 'mastered' 
+                    ? (masteredScope === 'current' ? `当前列表「${activeList}」暂无已转移掌握的单词` : '暂无已掌握单词') 
+                    : '该列表中暂无单词'}
               </h4>
               <p className="text-xs text-zinc-500 max-w-sm mx-auto">
                 {activeTab === 'mastered'
-                  ? '在背词页面点击对勾图标，或在 Word Game 中连对 6 次，即可将单词标记为已掌握。'
+                  ? (masteredScope === 'current' 
+                      ? `当从「${activeList}」完成掌握时会显示在此处，可在此一键退回原列表重练。`
+                      : '在背词页面点击对勾图标，或在 Word Game 中连对 6 次，即可将单词标记为已掌握。')
                   : '可通过导入数据或从其它列表中切换单词进行练习。'}
               </p>
             </div>
@@ -299,12 +359,37 @@ export const WordListModal: React.FC<WordListModalProps> = ({
 
                     {/* Meaning (Hidden by default, can be toggled) */}
                     {isMeaningRevealed ? (
-                      <div className="text-xs text-zinc-300 font-medium pl-0.5 pt-0.5 animate-in fade-in duration-150">
-                        {item.meaning}
+                      <div className="space-y-1 pt-0.5 animate-in fade-in duration-150 text-left">
+                        <div className="text-xs text-zinc-300 font-medium text-left">
+                          {item.meaning}
+                        </div>
+                        {item.phrase && (
+                          <div className="text-xs text-emerald-400/90 font-medium flex items-center gap-1.5 text-left">
+                            <span className="text-[11px] text-zinc-500 font-sans font-normal shrink-0">搭配:</span>
+                            <span>{item.phrase}</span>
+                          </div>
+                        )}
+                        {item.example_sentence && (
+                          <div className="text-xs text-zinc-300 italic flex items-start gap-1.5 leading-relaxed text-left group/ex">
+                            <span className="text-[11px] text-zinc-500 font-sans not-italic font-normal shrink-0">例句:</span>
+                            <span className="flex-1 text-zinc-200">"{item.example_sentence}"</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                speakWord(item.example_sentence!);
+                              }}
+                              className="p-1 text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors shrink-0 -mt-0.5"
+                              title="朗读例句"
+                            >
+                              <Volume2 size={12} />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="flex items-center gap-1 text-[11px] text-zinc-500">
-                        <span className="italic">词义已隐藏</span>
+                        <span className="italic">词义与例句已隐藏</span>
                         <button
                           type="button"
                           onClick={() => toggleRevealSingle(item.id)}
@@ -334,7 +419,7 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                       </button>
                     )}
 
-                    {/* 进入背诵 / 学习 */}
+                    {/* 切换学习 */}
                     <button
                       type="button"
                       onClick={() => {
@@ -342,9 +427,9 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                         onClose();
                       }}
                       className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-emerald-600/30 text-zinc-300 hover:text-emerald-300 text-xs font-medium transition-all flex items-center gap-1 shadow-sm active:scale-95"
-                      title="在主界面卡片中学习该单词"
+                      title="切换至该单词进行学习与练习"
                     >
-                      <span>背诵</span>
+                      <span>切换学习</span>
                       <ArrowRight size={12} />
                     </button>
                   </div>

@@ -219,8 +219,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
           };
 
           // If forceEnrich is on, always enrich
-          // Otherwise, only auto-enrich if the meaning is missing
-          const needsEnrichment = forceEnrich || !wordObj.meaning;
+          // Otherwise, auto-enrich if meaning or example sentence is missing
+          const needsEnrichment = forceEnrich || !wordObj.meaning || !wordObj.example_sentence;
 
           if (needsEnrichment) {
             wordsToEnrich.push(wordStr);
