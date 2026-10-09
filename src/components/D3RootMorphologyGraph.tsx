@@ -68,7 +68,7 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
 
     // Compact layout metrics:
     // Tight row height for maximum density & beauty
-    const rowHeight = count <= 3 ? 68 : count <= 6 ? 58 : 52;
+    const rowHeight = count <= 3 ? 72 : count <= 6 ? 62 : 56;
     const topPadding = 42;
     const bottomPadding = 32;
     const graphHeight = Math.max(260, topPadding + count * rowHeight + bottomPadding);
@@ -77,27 +77,27 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
     svg.selectAll('*').remove();
 
     // Node Dimensions
-    const prefixW = 88;
-    const prefixH = 38;
+    const prefixW = 94;
+    const prefixH = 42;
 
     const rootW = 126;
     const rootH = 54;
 
-    const suffixW = 96;
-    const suffixH = 38;
+    const suffixW = 106;
+    const suffixH = 42;
 
-    const wordW = 205;
-    const wordH = 46;
+    const wordW = 224;
+    const wordH = 50;
 
     const hasAnyPrefix = morphologyData.some(d => d.prefix);
 
     // Dynamic horizontal spacing based on container width
-    const colPrefixX = hasAnyPrefix ? 54 : 0;
-    const colRootX = hasAnyPrefix ? 190 : 85;
-    const colSuffixX = hasAnyPrefix ? 340 : 255;
-    const colWordX = hasAnyPrefix ? 535 : 450;
+    const colPrefixX = hasAnyPrefix ? 58 : 0;
+    const colRootX = hasAnyPrefix ? 200 : 88;
+    const colSuffixX = hasAnyPrefix ? 356 : 265;
+    const colWordX = hasAnyPrefix ? 560 : 475;
 
-    const graphWidth = Math.max(containerWidth, hasAnyPrefix ? 665 : 580);
+    const graphWidth = Math.max(containerWidth, hasAnyPrefix ? 695 : 610);
 
     svg
       .attr('viewBox', `0 0 ${graphWidth} ${graphHeight}`)
@@ -427,9 +427,10 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
       rootG
         .append('text')
         .attr('text-anchor', 'middle')
-        .attr('y', 15)
+        .attr('y', 16)
         .attr('fill', '#bfdbfe')
-        .attr('font-size', '10.5px')
+        .attr('font-size', '13px')
+        .attr('font-weight', '500')
         .attr('font-family', 'sans-serif')
         .text(rootMeaning.length > 8 ? rootMeaning.slice(0, 7) + '..' : rootMeaning);
     }
@@ -467,9 +468,9 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
         prefixG
           .append('text')
           .attr('text-anchor', 'middle')
-          .attr('y', d.prefixMeaning ? -2 : 4)
+          .attr('y', d.prefixMeaning ? -3 : 5)
           .attr('fill', '#38bdf8')
-          .attr('font-size', '12px')
+          .attr('font-size', '14px')
           .attr('font-weight', 'bold')
           .attr('font-family', 'ui-monospace, monospace')
           .text(d.prefix);
@@ -478,9 +479,9 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
           prefixG
             .append('text')
             .attr('text-anchor', 'middle')
-            .attr('y', 11)
+            .attr('y', 13)
             .attr('fill', '#94a3b8')
-            .attr('font-size', '9.5px')
+            .attr('font-size', '12px')
             .attr('font-family', 'sans-serif')
             .text(d.prefixMeaning.length > 7 ? d.prefixMeaning.slice(0, 6) + '..' : d.prefixMeaning);
         }
@@ -511,9 +512,9 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
         suffixG
           .append('text')
           .attr('text-anchor', 'middle')
-          .attr('y', d.suffixMeaning ? -2 : 4)
+          .attr('y', d.suffixMeaning ? -3 : 5)
           .attr('fill', '#ffffff')
-          .attr('font-size', '12px')
+          .attr('font-size', '14px')
           .attr('font-weight', 'bold')
           .attr('font-family', 'ui-monospace, monospace')
           .text(d.suffix);
@@ -522,9 +523,9 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
           suffixG
             .append('text')
             .attr('text-anchor', 'middle')
-            .attr('y', 11)
+            .attr('y', 13)
             .attr('fill', '#bfdbfe')
-            .attr('font-size', '9.5px')
+            .attr('font-size', '12px')
             .attr('font-family', 'sans-serif')
             .text(d.suffixMeaning.length > 7 ? d.suffixMeaning.slice(0, 6) + '..' : d.suffixMeaning);
         }
@@ -556,39 +557,38 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
         .attr('stroke', isHighlighted ? '#34d399' : isCurrent ? '#818cf8' : '#27272a')
         .attr('stroke-width', isHighlighted ? 2 : isCurrent ? 1.6 : 1);
 
-      // Line 1: Word + Phonetic / POS
+      // Line 1: Word + Part of speech (Phonetic removed as requested)
       const textGroup = wordG.append('g').attr('transform', `translate(${-wordW / 2 + 12}, 0)`);
 
-      // Word Title
+      // Word Title (15px)
       textGroup
         .append('text')
-        .attr('y', -6)
+        .attr('y', -7)
         .attr('fill', isHighlighted ? '#a7f3d0' : '#ffffff')
-        .attr('font-size', '13px')
+        .attr('font-size', '15px')
         .attr('font-weight', 'bold')
         .attr('font-family', 'ui-monospace, monospace')
         .text(d.word);
 
-      // Phonetic / Part of speech
-      const metaText = [d.phonetic, d.part_of_speech].filter(Boolean).join(' ');
-      if (metaText) {
+      // Part of speech only (No phonetic)
+      if (d.part_of_speech) {
         textGroup
           .append('text')
-          .attr('x', d.word.length * 8 + 6)
-          .attr('y', -6)
-          .attr('fill', '#71717a')
-          .attr('font-size', '9.5px')
+          .attr('x', d.word.length * 9.2 + 6)
+          .attr('y', -7)
+          .attr('fill', '#94a3b8')
+          .attr('font-size', '11.5px')
           .attr('font-family', 'ui-monospace, monospace')
-          .text(metaText.length > 15 ? metaText.slice(0, 13) + '..' : metaText);
+          .text(d.part_of_speech);
       }
 
-      // Line 2: Meaning
+      // Line 2: Meaning (Chinese font size increased to 13px)
       if (d.meaning) {
         textGroup
           .append('text')
-          .attr('y', 11)
+          .attr('y', 13)
           .attr('fill', isHighlighted ? '#34d399' : '#10b981')
-          .attr('font-size', '10px')
+          .attr('font-size', '13px')
           .attr('font-weight', '500')
           .attr('font-family', 'sans-serif')
           .text(d.meaning.length > 15 ? d.meaning.slice(0, 14) + '...' : d.meaning);
