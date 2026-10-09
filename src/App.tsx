@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { WordState } from './utils/word';
 import { loadWords, saveWords, getNextWordToReview, isWordDue, EBBINGHAUS_INTERVALS } from './utils/storage';
 import { enrichWords } from './utils/gemini';
+import { searchSimilarWords } from './utils/search';
 import { playKeystrokeSound, playSuccessSound, speakWord, speakWordAndExample, playWordAndExampleSequence, playComboSound } from './utils/audio';
 import { ImportModal } from './components/ImportModal';
 import { StatsModal } from './components/StatsModal';
@@ -481,36 +482,60 @@ export default function App() {
     };
   }, [isAutoPlaying, autoPlayIndex, filteredWords, autoPlaySpeed]);
 
-  // Search State
+  // Search State with Autocomplete
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
+  const [selectedDropdownIndex, setSelectedDropdownIndex] = useState(-1);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
 
+  // Retrieve matching / similar words from current vocabulary library (local search only)
+  const similarWords = useMemo(() => {
+    if (!searchTerm.trim()) return [];
+    return searchSimilarWords(words, searchTerm, 8);
+  }, [words, searchTerm]);
+
+  // Close search dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setIsSearchDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Jump to word selected from dropdown
+  const handleSelectWordFromDropdown = useCallback((matchedWord: WordState) => {
+    setActiveList(matchedWord.listName || 'Default List');
+    setCurrentWord(matchedWord);
+    let isCompleted = false;
+    if (isEbbinghausMode) {
+      isCompleted = !isWordDue(matchedWord, isDictationMode, Date.now());
+    } else {
+      isCompleted = isDictationMode ? matchedWord.is_completed_dictation : matchedWord.is_completed_normal;
+    }
+    setIsViewingHistory(isCompleted);
+    setInput('');
+    setSearchTerm('');
+    setIsSearchDropdownOpen(false);
+    setSelectedDropdownIndex(-1);
+  }, [isEbbinghausMode, isDictationMode]);
+
+  // Only execute online query / word enrichment when user explicitly clicks search or presses Enter
   const handleSearch = useCallback(async () => {
     if (!searchTerm.trim() || isSearching) return;
     const normalizedTerm = searchTerm.trim();
+    setIsSearchDropdownOpen(false);
+    setSelectedDropdownIndex(-1);
     
-    // Check if word exists
+    // Check if word exists in library
     const existingWord = words.find(w => w.word.toLowerCase() === normalizedTerm.toLowerCase());
     
     if (existingWord) {
       // If word exists, switch to its list and set as current word
-      setActiveList(existingWord.listName || 'Default List');
-      setCurrentWord(existingWord);
-      // If it's already completed (or not due in Ebbinghaus mode), we might want to see it anyway
-      let isCompleted = false;
-      if (isEbbinghausMode) {
-        isCompleted = !isWordDue(existingWord, isDictationMode, Date.now());
-      } else {
-        isCompleted = isDictationMode ? existingWord.is_completed_dictation : existingWord.is_completed_normal;
-      }
-      
-      if (isCompleted) {
-        setIsViewingHistory(true);
-      } else {
-        setIsViewingHistory(false);
-      }
-      setInput('');
-      setSearchTerm('');
+      handleSelectWordFromDropdown(existingWord);
     } else {
       setIsSearching(true);
       try {
@@ -586,7 +611,7 @@ export default function App() {
         setIsSearching(false);
       }
     }
-  }, [searchTerm, words, isDictationMode, isSearching]);
+  }, [searchTerm, words, isSearching, handleSelectWordFromDropdown]);
 
   // Statistics State
   const [stats, setStats] = useState<Stats>(() => {
@@ -2167,32 +2192,161 @@ export default function App() {
               </div>
             )}
 
-            {/* Search Bar (Moved to left side) */}
-            <div className="w-full max-w-[170px] sm:max-w-[200px] hidden md:block">
+            {/* Search Bar with Autocomplete Dropdown */}
+            <div ref={searchContainerRef} className="relative w-full max-w-[170px] sm:max-w-[210px] hidden md:block">
               <div className="relative group">
                 <input
                   type="text"
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onFocus={() => {
+                    if (searchTerm.trim()) {
+                      setIsSearchDropdownOpen(true);
+                    }
+                  }}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    if (e.target.value.trim()) {
+                      setIsSearchDropdownOpen(true);
+                      setSelectedDropdownIndex(-1);
+                    } else {
+                      setIsSearchDropdownOpen(false);
+                    }
+                  }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+                    if (isSearchDropdownOpen && similarWords.length > 0) {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setSelectedDropdownIndex((prev) => 
+                          prev < similarWords.length - 1 ? prev + 1 : 0
+                        );
+                        return;
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setSelectedDropdownIndex((prev) => 
+                          prev > 0 ? prev - 1 : similarWords.length - 1
+                        );
+                        return;
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (selectedDropdownIndex >= 0 && selectedDropdownIndex < similarWords.length) {
+                          handleSelectWordFromDropdown(similarWords[selectedDropdownIndex]);
+                          return;
+                        } else {
+                          handleSearch();
+                          return;
+                        }
+                      } else if (e.key === 'Escape') {
+                        setIsSearchDropdownOpen(false);
+                        return;
+                      }
+                    } else if (e.key === 'Enter') {
                       handleSearch();
                     }
                   }}
                   placeholder="Search or add word"
-                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-full h-8 pl-3.5 pr-8 text-xs text-zinc-300 focus:outline-none focus:border-zinc-500 focus:bg-zinc-900 transition-all"
+                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-full h-8 pl-3.5 pr-8 text-xs text-zinc-300 focus:outline-none focus:border-zinc-500 focus:bg-zinc-900 transition-all placeholder:text-zinc-600"
                 />
                 <button
+                  type="button"
                   onClick={handleSearch}
                   disabled={isSearching}
-                  className={`absolute right-1 top-1/2 -translate-y-1/2 p-1 transition-colors ${
+                  className={`absolute right-1 top-1/2 -translate-y-1/2 p-1 transition-colors cursor-pointer ${
                     isSearching ? 'text-emerald-500 animate-pulse' : 'text-zinc-500 hover:text-emerald-400'
                   }`}
-                  title="Search or Add Word"
+                  title="点击搜索获取单词信息 (Enter)"
                 >
-                  <Search size={14} />
+                  {isSearching ? <Loader2 size={14} className="animate-spin text-emerald-400" /> : <Search size={14} />}
                 </button>
               </div>
+
+              {/* Autocomplete Dropdown Menu */}
+              {isSearchDropdownOpen && searchTerm.trim() && (
+                <div className="absolute left-0 top-full mt-1.5 w-[280px] sm:w-[320px] bg-zinc-950/95 backdrop-blur-xl border border-zinc-800/90 rounded-2xl shadow-2xl p-1.5 z-50 overflow-hidden divide-y divide-zinc-900/80 animate-in fade-in duration-100">
+                  {/* Header */}
+                  <div className="px-2.5 py-1.5 flex items-center justify-between text-[11px] text-zinc-400">
+                    <span className="flex items-center gap-1 font-medium text-zinc-300">
+                      <Sparkles size={11} className="text-indigo-400" />
+                      词库相近单词 ({similarWords.length})
+                    </span>
+                    <span className="text-[10px] text-zinc-500">
+                      点击即选
+                    </span>
+                  </div>
+
+                  {/* List of matching words from user library */}
+                  <div className="max-h-60 overflow-y-auto py-1 space-y-0.5">
+                    {similarWords.length > 0 ? (
+                      similarWords.map((wordItem, idx) => {
+                        const isHighlighted = idx === selectedDropdownIndex;
+                        return (
+                          <div
+                            key={wordItem.id}
+                            onMouseEnter={() => setSelectedDropdownIndex(idx)}
+                            onClick={() => handleSelectWordFromDropdown(wordItem)}
+                            className={`p-2 rounded-xl transition-all cursor-pointer flex items-center justify-between gap-2 text-left ${
+                              isHighlighted 
+                                ? 'bg-indigo-600/20 border border-indigo-500/40' 
+                                : 'hover:bg-zinc-900/80 border border-transparent'
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`font-mono font-bold text-xs ${isHighlighted ? 'text-indigo-300' : 'text-white'}`}>
+                                  {wordItem.word}
+                                </span>
+                                {wordItem.part_of_speech && (
+                                  <span className="text-[9.5px] px-1 py-0.2 rounded bg-zinc-800 text-zinc-400 font-mono">
+                                    {wordItem.part_of_speech}
+                                  </span>
+                                )}
+                                {wordItem.phonetic && (
+                                  <span className="text-[10px] text-zinc-500 font-mono truncate max-w-[80px]">
+                                    {wordItem.phonetic}
+                                  </span>
+                                )}
+                              </div>
+                              {wordItem.meaning && (
+                                <div className="text-[11px] text-zinc-400 truncate mt-0.5">
+                                  {wordItem.meaning}
+                                </div>
+                              )}
+                            </div>
+
+                            {wordItem.listName && (
+                              <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800/80 text-zinc-400 font-mono shrink-0 max-w-[80px] truncate" title={wordItem.listName}>
+                                {wordItem.listName}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="py-3 px-3 text-center text-xs text-zinc-500 space-y-0.5">
+                        <div>词库中暂无相近单词</div>
+                        <div className="text-[10px] text-zinc-600">点击下方或按回车开始联网查询</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Online Query / Add New Word Action */}
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={handleSearch}
+                      disabled={isSearching}
+                      className="w-full py-2 px-2.5 rounded-xl bg-zinc-900/70 hover:bg-emerald-500/15 text-zinc-300 hover:text-emerald-400 hover:border-emerald-500/30 border border-transparent text-xs font-medium flex items-center justify-between transition-all cursor-pointer group"
+                    >
+                      <span className="flex items-center gap-1.5 truncate">
+                        <Search size={13} className="text-zinc-500 group-hover:text-emerald-400 shrink-0" />
+                        <span className="truncate">点击搜索并查询 "{searchTerm}"</span>
+                      </span>
+                      <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800/80 px-1.5 py-0.5 rounded shrink-0">
+                        Enter ↵
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           
@@ -2488,49 +2642,68 @@ export default function App() {
                   </div>
                 )}
                 {(currentWord.prefix || currentWord.root_core || currentWord.suffix) ? (
-                  <div className="mt-4 font-mono text-zinc-400 text-sm flex flex-wrap justify-center items-center gap-1">
-                    {currentWord.prefix && (
-                      <span>{currentWord.prefix} {currentWord.prefix_meaning && `(${currentWord.prefix_meaning})`}</span>
-                    )}
-                    {currentWord.prefix && (currentWord.root_core || currentWord.suffix) && <span> + </span>}
-                    {currentWord.root_core && (
+                  isDictationMode && !isHinted ? (
+                    <div className="mt-4 flex justify-center">
                       <button
                         type="button"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          setSelectedRootInfo({
-                            rootCore: currentWord.root_core!,
-                            rootMeaning: currentWord.root_meaning,
-                          });
+                          setIsHinted(true);
+                          setHasError(true);
                         }}
-                        className="relative inline-flex items-center gap-1 px-2.5 py-0.5 mr-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 hover:text-indigo-200 transition-all cursor-pointer group shadow-sm text-sm font-mono select-none"
-                        title={`该词根共收录 ${currentWordSameRootCount} 个单词，点击查看完整列表`}
+                        className="font-mono text-zinc-500 hover:text-zinc-300 text-xs inline-flex items-center gap-1.5 py-1 px-3 bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700 rounded-full transition-all cursor-pointer group shadow-sm select-none"
+                        title="听写防剧透，点击偷看词根提示"
                       >
-                        <Sparkles size={11} className="text-indigo-400 group-hover:scale-110 transition-transform" />
-                        <span className="font-bold underline decoration-indigo-400/50 underline-offset-2">
-                          {currentWord.root_core}
-                        </span>
-                        {currentWord.root_meaning && (
-                          <span className="text-indigo-200/80 font-normal">
-                            ({currentWord.root_meaning})
-                          </span>
-                        )}
-                        {currentWordSameRootCount > 0 && (
-                          <span 
-                            className="absolute -top-2 -right-2 min-w-[17px] h-[17px] px-1 bg-indigo-600 text-white border border-indigo-400/50 rounded-full text-[10px] font-mono font-bold flex items-center justify-center shadow-md shadow-indigo-950/60 group-hover:bg-indigo-500 transition-colors"
-                            title={`该词根共收录 ${currentWordSameRootCount} 个单词`}
-                          >
-                            {currentWordSameRootCount}
-                          </span>
-                        )}
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500/60 group-hover:bg-indigo-400 transition-colors" />
+                        <span>词根已遮挡 · 点击偷看</span>
                       </button>
-                    )}
-                    {currentWord.root_core && currentWord.suffix && <span> + </span>}
-                    {currentWord.suffix && (
-                      <span>{currentWord.suffix} {currentWord.suffix_meaning && `(${currentWord.suffix_meaning})`}</span>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <div className="mt-4 font-mono text-zinc-400 text-sm flex flex-wrap justify-center items-center gap-1">
+                      {currentWord.prefix && (
+                        <span>{currentWord.prefix} {currentWord.prefix_meaning && `(${currentWord.prefix_meaning})`}</span>
+                      )}
+                      {currentWord.prefix && (currentWord.root_core || currentWord.suffix) && <span> + </span>}
+                      {currentWord.root_core && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setSelectedRootInfo({
+                              rootCore: currentWord.root_core!,
+                              rootMeaning: currentWord.root_meaning,
+                            });
+                          }}
+                          className="relative inline-flex items-center gap-1 px-2.5 py-0.5 mr-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 hover:text-indigo-200 transition-all cursor-pointer group shadow-sm text-sm font-mono select-none"
+                          title={`该词根共收录 ${currentWordSameRootCount} 个单词，点击查看完整列表`}
+                        >
+                          <Sparkles size={11} className="text-indigo-400 group-hover:scale-110 transition-transform" />
+                          <span className="font-bold underline decoration-indigo-400/50 underline-offset-2">
+                            {currentWord.root_core}
+                          </span>
+                          {currentWord.root_meaning && (
+                            <span className="text-indigo-200/80 font-normal">
+                              ({currentWord.root_meaning})
+                            </span>
+                          )}
+                          {currentWordSameRootCount > 0 && (
+                            <span 
+                              className="absolute -top-2 -right-2 min-w-[17px] h-[17px] px-1 bg-indigo-600 text-white border border-indigo-400/50 rounded-full text-[10px] font-mono font-bold flex items-center justify-center shadow-md shadow-indigo-950/60 group-hover:bg-indigo-500 transition-colors"
+                              title={`该词根共收录 ${currentWordSameRootCount} 个单词`}
+                            >
+                              {currentWordSameRootCount}
+                            </span>
+                          )}
+                        </button>
+                      )}
+                      {currentWord.root_core && currentWord.suffix && <span> + </span>}
+                      {currentWord.suffix && (
+                        <span>{currentWord.suffix} {currentWord.suffix_meaning && `(${currentWord.suffix_meaning})`}</span>
+                      )}
+                    </div>
+                  )
                 ) : null}
                 {currentWord.phrase && (
                   <div className="flex items-center justify-center space-x-2 mt-2">

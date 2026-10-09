@@ -1,8 +1,9 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { X, Volume2, Sparkles, ArrowRight, CheckCircle2, Search, BookOpen, Layers } from 'lucide-react';
+import { X, Volume2, Sparkles, ArrowRight, CheckCircle2, Search, BookOpen, Layers, GitFork } from 'lucide-react';
 import { WordState } from '../utils/word';
 import { speakWord } from '../utils/audio';
 import { generateExampleSentenceForWord } from '../utils/sentence';
+import { D3RootMorphologyGraph } from './D3RootMorphologyGraph';
 
 interface SameRootWordsModalProps {
   rootCore: string;
@@ -24,6 +25,7 @@ export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
   onUpdateWord,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph');
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
 
   // Handle ESC key to close
@@ -136,11 +138,11 @@ export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
       onClick={onClose}
     >
       <div 
-        className="bg-zinc-950 border border-zinc-800 rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden relative"
+        className="bg-zinc-950 border border-zinc-800 rounded-3xl w-full max-w-4xl max-h-[88vh] flex flex-col shadow-2xl overflow-hidden relative"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-5 sm:p-6 border-b border-zinc-800/80 bg-zinc-900/40 flex items-start justify-between gap-4">
+        <div className="p-5 sm:p-6 border-b border-zinc-800/80 bg-zinc-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1.5">
             <div className="flex items-center flex-wrap gap-2">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 font-mono font-bold text-base shadow-sm">
@@ -158,59 +160,103 @@ export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
             </div>
             <p className="text-xs text-zinc-400 flex items-center gap-1 pt-0.5">
               <BookOpen size={12} className="text-zinc-500" />
-              点击列表中的单词可直接切换至卡片进行背诵与复习
+              点击“切换学习”可切换至卡片进行背诵与复习
             </p>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors shrink-0"
-            title="关闭"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-3 self-end sm:self-center">
+            {/* View Mode Switcher */}
+            <div className="flex items-center bg-zinc-950/80 p-1 rounded-2xl border border-zinc-800 text-xs shrink-0">
+              <button
+                type="button"
+                onClick={() => setViewMode('graph')}
+                className={`px-3 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5 ${
+                  viewMode === 'graph'
+                    ? 'bg-blue-600 text-white font-bold shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+                title="查看 D3 构词逻辑拓扑关联图"
+              >
+                <GitFork size={13} />
+                <span>构词关联图 (D3)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`px-3 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5 ${
+                  viewMode === 'list'
+                    ? 'bg-zinc-800 text-white font-bold shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+                title="查看详细单词列表"
+              >
+                <Layers size={13} />
+                <span>列表模式 ({matchingWords.length})</span>
+              </button>
+            </div>
+
+            <button
+              onClick={onClose}
+              className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors shrink-0"
+              title="关闭"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
-        {/* Filter / Search within matching words */}
-        {matchingWords.length > 5 && (
-          <div className="px-5 sm:px-6 pt-3 pb-1 border-b border-zinc-900">
-            <div className="relative">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="在同词根列表中搜索单词或释义..."
-                className="w-full bg-zinc-900/80 border border-zinc-800 rounded-xl pl-9 pr-4 py-2 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50"
-              />
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
-            </div>
+        {/* View Mode: Graph vs List */}
+        {viewMode === 'graph' ? (
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+            <D3RootMorphologyGraph
+              rootCore={rootCore}
+              rootMeaning={rootMeaning}
+              words={matchingWords}
+              currentWordId={currentWordId}
+              onSelectWord={(word) => {
+                onSelectWord(word);
+                onClose();
+              }}
+            />
           </div>
-        )}
+        ) : (
+          <>
+            {/* Filter / Search within matching words */}
+            {matchingWords.length > 5 && (
+              <div className="px-5 sm:px-6 pt-3 pb-1 border-b border-zinc-900">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="在同词根列表中搜索单词或释义..."
+                    className="w-full bg-zinc-900/80 border border-zinc-800 rounded-xl pl-9 pr-4 py-2 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50"
+                  />
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                </div>
+              </div>
+            )}
 
-        {/* Word List */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-2.5 divide-y divide-zinc-900/60">
-          {displayedWords.length === 0 ? (
-            <div className="py-12 text-center space-y-3">
-              <Layers size={36} className="mx-auto text-zinc-600 opacity-60" />
-              <p className="text-sm text-zinc-400">
-                {searchTerm ? '没有找到符合筛选条件的同词根单词' : `词库中暂未收录更多包含 "${rootCore}" 的单词`}
-              </p>
-              <p className="text-xs text-zinc-600">
-                导入更多相关词汇或使用 AI 丰富词汇库后即可在此串联记忆
-              </p>
-            </div>
-          ) : (
+            {/* Word List */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-2.5 divide-y divide-zinc-900/60">
+              {displayedWords.length === 0 ? (
+                <div className="py-12 text-center space-y-3">
+                  <Layers size={36} className="mx-auto text-zinc-600 opacity-60" />
+                  <p className="text-sm text-zinc-400">
+                    {searchTerm ? '没有找到符合筛选条件的同词根单词' : `词库中暂未收录更多包含 "${rootCore}" 的单词`}
+                  </p>
+                  <p className="text-xs text-zinc-600">
+                    导入更多相关词汇或使用 AI 丰富词汇库后即可在此串联记忆
+                  </p>
+                </div>
+              ) : (
             displayedWords.map((wordItem) => {
               const isCurrent = wordItem.id === currentWordId;
 
               return (
                 <div
                   key={wordItem.id}
-                  onClick={() => {
-                    onSelectWord(wordItem);
-                    onClose();
-                  }}
-                  className={`pt-2.5 first:pt-0 group p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col sm:flex-row sm:items-start justify-between gap-3 ${
+                  className={`pt-2.5 first:pt-0 group p-3.5 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-start justify-between gap-3 ${
                     isCurrent
                       ? 'bg-indigo-950/20 border-indigo-500/30 hover:border-indigo-500/50 hover:bg-indigo-950/30'
                       : 'bg-zinc-900/40 border-zinc-850 hover:border-zinc-700/80 hover:bg-zinc-900/80'
@@ -353,7 +399,13 @@ export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
 
                     <button
                       type="button"
-                      className="flex items-center space-x-1 px-2.5 py-1 text-xs font-medium rounded-full bg-zinc-800 text-zinc-300 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectWord(wordItem);
+                        onClose();
+                      }}
+                      className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-sm active:scale-95 cursor-pointer"
+                      title="切换至该单词卡片学习"
                     >
                       <span>切换学习</span>
                       <ArrowRight size={12} />
@@ -364,6 +416,8 @@ export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
             })
           )}
         </div>
+      </>
+    )}
 
         {/* Footer */}
         <div className="p-3.5 px-6 border-t border-zinc-900 bg-zinc-950/80 flex items-center justify-between text-xs text-zinc-500 font-mono">
