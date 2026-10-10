@@ -350,13 +350,6 @@ export default function App() {
   const upcomingWord = useMemo(() => {
     if (!currentWord || filteredWords.length <= 1) return null;
 
-    if (isAutoPlaying) {
-      const currentIndex = filteredWords.findIndex(w => w.id === currentWord.id);
-      if (currentIndex !== -1) {
-        return filteredWords[(currentIndex + 1) % filteredWords.length];
-      }
-    }
-
     if (isEbbinghausMode) {
       const now = Date.now();
       const includeMastered = activeList === 'Mastered Words';
@@ -410,20 +403,14 @@ export default function App() {
     }
 
     return null;
-  }, [currentWord, filteredWords, isEbbinghausMode, isDictationMode, activeList, isAutoPlaying]);
+  }, [currentWord, filteredWords, isEbbinghausMode, isDictationMode, activeList]);
 
   // Previous word preview
   const previousWord = useMemo(() => {
-    if (isAutoPlaying && currentWord && filteredWords.length > 1) {
-      const currentIndex = filteredWords.findIndex(w => w.id === currentWord.id);
-      if (currentIndex !== -1) {
-        return filteredWords[(currentIndex - 1 + filteredWords.length) % filteredWords.length];
-      }
-    }
     if (history.length === 0) return null;
     const prevId = history[history.length - 1];
     return filteredWords.find(w => w.id === prevId) || words.find(w => w.id === prevId) || null;
-  }, [isAutoPlaying, currentWord, history, filteredWords, words]);
+  }, [history, filteredWords, words]);
 
   // Game State
   const [isGameMode, setIsGameMode] = useState(false);
@@ -556,8 +543,6 @@ export default function App() {
 
     // Show the target word on the flashcard
     setCurrentWord(targetWord);
-    setInput('');
-    setIsViewingHistory(false);
 
     autoPlayCancelRef.current = playWordAndExampleSequence(
       targetWord.word,
@@ -1361,8 +1346,8 @@ export default function App() {
 
   // Update current word when words change or transition finishes
   useEffect(() => {
-    // When playing word game or during auto-play, do not auto-jump words
-    if (isGameMode || isAutoPlaying) return;
+    // When playing word game, do not switch words or speak background words
+    if (isGameMode) return;
 
     if (!isTransitioning) {
       if (filteredWords.length > 0) {
@@ -1410,16 +1395,9 @@ export default function App() {
         setCurrentWord(null);
       }
     }
-  }, [filteredWords, isTransitioning, currentWordId, isViewingHistory, isDictationMode, isEbbinghausMode, isGameMode, isAutoPlaying]);
+  }, [filteredWords, isTransitioning, currentWordId, isViewingHistory, isDictationMode, isEbbinghausMode, isGameMode]);
 
   const handleBack = useCallback(() => {
-    if (isAutoPlaying) {
-      if (filteredWords.length > 0) {
-        setAutoPlayIndex(prev => (prev - 1 + filteredWords.length) % filteredWords.length);
-      }
-      return;
-    }
-
     let newHistory = [...history];
     let prevWord;
     
@@ -1436,18 +1414,11 @@ export default function App() {
       setInput('');
       speakWordAndExample(prevWord.word, prevWord.example_sentence);
     }
-  }, [history, filteredWords, isAutoPlaying]);
+  }, [history, filteredWords]);
 
   const handleSkip = useCallback(() => {
     if (!currentWord) return;
     
-    if (isAutoPlaying) {
-      if (filteredWords.length > 0) {
-        setAutoPlayIndex(prev => (prev + 1) % filteredWords.length);
-      }
-      return;
-    }
-
     setIsTransitioning(true);
     
     if (isViewingHistory) {
@@ -1480,7 +1451,7 @@ export default function App() {
       setInput('');
       setIsViewingHistory(false);
     }, 200);
-  }, [currentWord, words, isViewingHistory, isAutoPlaying, filteredWords]);
+  }, [currentWord, words, isViewingHistory]);
 
   // Handle keyboard input
   useEffect(() => {
