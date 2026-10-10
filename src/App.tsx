@@ -333,6 +333,72 @@ export default function App() {
     }).length;
   }, [words, currentWord?.root_core]);
 
+  // Upcoming word to practice preview (low visual weight, compact preview)
+  const upcomingWord = useMemo(() => {
+    if (!currentWord || filteredWords.length <= 1) return null;
+
+    if (isEbbinghausMode) {
+      const now = Date.now();
+      const includeMastered = activeList === 'Mastered Words';
+      const dueWords = filteredWords.filter(w =>
+        (includeMastered || !w.is_mastered) && isWordDue(w, isDictationMode, now)
+      );
+
+      const remainingDue = dueWords.filter(w => w.id !== currentWord.id);
+      if (remainingDue.length > 0) {
+        remainingDue.sort((a, b) => {
+          const stageA = a.ebbinghaus_stage ?? 0;
+          const stageB = b.ebbinghaus_stage ?? 0;
+          if (stageA > 0 && stageB === 0) return -1;
+          if (stageA === 0 && stageB > 0) return 1;
+          if (stageA > 0 && stageB > 0) {
+            if (stageA !== stageB) return stageA - stageB;
+            return (a.last_review_time || 0) - (b.last_review_time || 0);
+          }
+          if (a.has_error && !b.has_error) return -1;
+          if (!a.has_error && b.has_error) return 1;
+          return 0;
+        });
+        return remainingDue[0];
+      }
+      return null;
+    }
+
+    // Normal sequential mode:
+    const includeMastered = activeList === 'Mastered Words';
+    const isCompleted = (w: WordState) =>
+      isDictationMode ? w.is_completed_dictation : w.is_completed_normal;
+
+    const currentIndex = filteredWords.findIndex(w => w.id === currentWord.id);
+
+    if (currentIndex !== -1) {
+      // 1. Look for next uncompleted word after current word
+      const nextAfter = filteredWords.slice(currentIndex + 1).find(w =>
+        (includeMastered || !w.is_mastered) && !isCompleted(w)
+      );
+      if (nextAfter) return nextAfter;
+
+      // 2. Wrap around and look before current word
+      const nextBefore = filteredWords.slice(0, currentIndex).find(w =>
+        (includeMastered || !w.is_mastered) && !isCompleted(w)
+      );
+      if (nextBefore) return nextBefore;
+
+      // 3. Fallback: next word in sequential order
+      const nextAny = filteredWords[(currentIndex + 1) % filteredWords.length];
+      if (nextAny && nextAny.id !== currentWord.id) return nextAny;
+    }
+
+    return null;
+  }, [currentWord, filteredWords, isEbbinghausMode, isDictationMode, activeList]);
+
+  // Previous word preview
+  const previousWord = useMemo(() => {
+    if (history.length === 0) return null;
+    const prevId = history[history.length - 1];
+    return filteredWords.find(w => w.id === prevId) || words.find(w => w.id === prevId) || null;
+  }, [history, filteredWords, words]);
+
   // Game State
   const [isGameMode, setIsGameMode] = useState(false);
   const [playedGameWordIds, setPlayedGameWordIds] = useState<Set<string>>(() => {
@@ -2471,29 +2537,53 @@ export default function App() {
               {/* Main Word */}
               <div className="relative inline-block mb-6 min-w-[200px]">
                 {history.length > 0 && (
+                  <div className="absolute top-1/2 -translate-y-1/2 right-full mr-4 sm:mr-6 md:mr-8 flex items-center select-none z-10 group/prev pointer-events-auto">
+                    {previousWord && (
+                      <span
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleBack();
+                        }}
+                        className="mr-1.5 text-xs font-mono text-zinc-400 opacity-80 group-hover/prev:text-emerald-400 group-hover/prev:opacity-100 transition-all cursor-pointer whitespace-nowrap max-w-[90px] sm:max-w-[130px] truncate select-none"
+                      >
+                        {previousWord.word}
+                      </span>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleBack();
+                      }}
+                      className="p-2 text-zinc-500 group-hover/prev:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none shrink-0"
+                      tabIndex={-1}
+                    >
+                      <ArrowLeft size={24} />
+                    </button>
+                  </div>
+                )}
+                <div className="absolute top-1/2 -translate-y-1/2 left-full ml-4 sm:ml-6 md:ml-8 flex items-center select-none z-10 group/next pointer-events-auto">
                   <button
                     onClick={(e) => {
                       e.preventDefault();
-                      handleBack();
+                      handleSkip();
                     }}
-                    className="absolute top-1/2 -translate-y-1/2 -left-16 md:-left-24 p-2 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
-                    title="Previous word (ArrowLeft)"
+                    className="p-2 text-zinc-500 group-hover/next:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none shrink-0"
                     tabIndex={-1}
                   >
-                    <ArrowLeft size={24} />
+                    <ArrowRight size={24} />
                   </button>
-                )}
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleSkip();
-                  }}
-                  className="absolute top-1/2 -translate-y-1/2 -right-16 md:-right-24 p-2 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
-                  title="Skip to next word (ArrowRight)"
-                  tabIndex={-1}
-                >
-                  <ArrowRight size={24} />
-                </button>
+                  {upcomingWord && (
+                    <span
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleSkip();
+                      }}
+                      className="ml-1.5 text-xs font-mono text-zinc-400 opacity-80 group-hover/next:text-emerald-400 group-hover/next:opacity-100 transition-all cursor-pointer whitespace-nowrap max-w-[90px] sm:max-w-[130px] truncate select-none"
+                    >
+                      {isDictationMode && !isHinted ? '•••••' : upcomingWord.word}
+                    </span>
+                  )}
+                </div>
                 {isDictationMode ? (
                   <div className="relative flex flex-col items-center justify-center h-[72px] md:h-[96px] w-full px-8">
                     {/* Ghost word to ensure container width matches word width, preventing arrow overlap */}
@@ -3328,8 +3418,8 @@ export default function App() {
         />
       )}
 
-      <div className="fixed bottom-4 right-6 text-[10px] text-zinc-600/60 font-mono pointer-events-none select-none">
-        Rev 3.8 Designed by robin.yj.ye@gmail.com in Mar 2026
+      <div className="fixed bottom-4 right-6 text-[10px] text-zinc-700/60 font-mono pointer-events-none select-none">
+        Powered by Robin (robin.yj.ye@gmail.com) and launched in Mar 2026
       </div>
     </div>
   );
