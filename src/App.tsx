@@ -32,15 +32,14 @@ interface Stats {
   daily: { [date: string]: DailyStat };
 }
 
-const renderHighlightedWord = (wordObj: WordState) => {
+const getWordCharColors = (wordObj?: WordState | null): string[] => {
+  if (!wordObj || !wordObj.word) return [];
   const word = wordObj.word;
   const p = (wordObj.prefix || '').replace(/[^a-zA-Z]/g, '').toLowerCase();
   const r = (wordObj.root_core || '').replace(/[^a-zA-Z]/g, '').toLowerCase();
   const s = (wordObj.suffix || '').replace(/[^a-zA-Z]/g, '').toLowerCase();
 
-  if (!p && !r && !s) return word;
-
-  const colors = new Array(word.length).fill('');
+  const colors = new Array(word.length).fill('text-white');
   const lowerWord = word.toLowerCase();
 
   // 1. Prefix
@@ -82,6 +81,18 @@ const renderHighlightedWord = (wordObj: WordState) => {
     }
   }
 
+  return colors;
+};
+
+const renderHighlightedWord = (wordObj: WordState) => {
+  const word = wordObj.word;
+  const p = (wordObj.prefix || '').replace(/[^a-zA-Z]/g, '').toLowerCase();
+  const r = (wordObj.root_core || '').replace(/[^a-zA-Z]/g, '').toLowerCase();
+  const s = (wordObj.suffix || '').replace(/[^a-zA-Z]/g, '').toLowerCase();
+
+  if (!p && !r && !s) return word;
+
+  const colors = getWordCharColors(wordObj);
   const spans = [];
   let currentSpan = '';
   let currentColor = colors[0];
@@ -209,11 +220,13 @@ export default function App() {
   const [isViewingHistory, setIsViewingHistory] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [isHinted, setIsHinted] = useState(false);
+  const [showDictationRoot, setShowDictationRoot] = useState(false);
   const [sessionErrors, setSessionErrors] = useState<Set<string>>(new Set());
   
   useEffect(() => {
     setHasError(false);
     setIsHinted(false);
+    setShowDictationRoot(false);
   }, [currentWord?.id]);
   
   useEffect(() => {
@@ -337,6 +350,13 @@ export default function App() {
   const upcomingWord = useMemo(() => {
     if (!currentWord || filteredWords.length <= 1) return null;
 
+    if (isAutoPlaying) {
+      const currentIndex = filteredWords.findIndex(w => w.id === currentWord.id);
+      if (currentIndex !== -1) {
+        return filteredWords[(currentIndex + 1) % filteredWords.length];
+      }
+    }
+
     if (isEbbinghausMode) {
       const now = Date.now();
       const includeMastered = activeList === 'Mastered Words';
@@ -390,14 +410,20 @@ export default function App() {
     }
 
     return null;
-  }, [currentWord, filteredWords, isEbbinghausMode, isDictationMode, activeList]);
+  }, [currentWord, filteredWords, isEbbinghausMode, isDictationMode, activeList, isAutoPlaying]);
 
   // Previous word preview
   const previousWord = useMemo(() => {
+    if (isAutoPlaying && currentWord && filteredWords.length > 1) {
+      const currentIndex = filteredWords.findIndex(w => w.id === currentWord.id);
+      if (currentIndex !== -1) {
+        return filteredWords[(currentIndex - 1 + filteredWords.length) % filteredWords.length];
+      }
+    }
     if (history.length === 0) return null;
     const prevId = history[history.length - 1];
     return filteredWords.find(w => w.id === prevId) || words.find(w => w.id === prevId) || null;
-  }, [history, filteredWords, words]);
+  }, [isAutoPlaying, currentWord, history, filteredWords, words]);
 
   // Game State
   const [isGameMode, setIsGameMode] = useState(false);
@@ -530,6 +556,8 @@ export default function App() {
 
     // Show the target word on the flashcard
     setCurrentWord(targetWord);
+    setInput('');
+    setIsViewingHistory(false);
 
     autoPlayCancelRef.current = playWordAndExampleSequence(
       targetWord.word,
@@ -1055,21 +1083,26 @@ export default function App() {
   const handleGameInput = useCallback((char: string) => {
     if (gameStatus !== 'playing') return;
 
-    const currentBlankIdx = gameInput.findIndex(val => val === '');
-    if (currentBlankIdx === -1) return;
+    let targetBlankIdx = gameInput.findIndex(val => val === '');
+    if (targetBlankIdx === -1) {
+      // If all blanks are already filled, allow replacing the last blank
+      targetBlankIdx = gameInput.length - 1;
+    }
 
-    const targetChar = gameWords[currentGameIdx].word[gameBlanks[currentBlankIdx]];
-    
-    if (char.toLowerCase() === targetChar.toLowerCase()) {
-      // Correct
-      const newInput = [...gameInput];
-      newInput[currentBlankIdx] = char;
-      setGameInput(newInput);
-      setPeekedBlankIdx(null);
-      playKeystrokeSound(char);
+    const newInput = [...gameInput];
+    newInput[targetBlankIdx] = char;
+    setGameInput(newInput);
+    setPeekedBlankIdx(null);
+    playKeystrokeSound(char);
 
-      // Check if word is complete
-      if (currentBlankIdx === gameBlanks.length - 1) {
+    // Only judge when user inputs the last blank (all blanks filled)
+    if (targetBlankIdx === gameBlanks.length - 1) {
+      const targetWord = gameWords[currentGameIdx].word;
+      const isAllCorrect = gameBlanks.every((wordCharIdx, bIdx) => {
+        return newInput[bIdx].toLowerCase() === targetWord[wordCharIdx].toLowerCase();
+      });
+
+      if (isAllCorrect) {
         setGameStatus('correct');
         const newCombo = combo + 1;
         const isMilestone = newCombo % 5 === 0;
@@ -1231,20 +1264,26 @@ export default function App() {
             setGameStatus('finished');
           }
         }, delay);
+      } else {
+        // Not all correct: do not jump, mark error for streak tracking, reset combo, wait for user to correct
+        wordErrorOccurredRef.current = true;
+        setCombo(0);
       }
-    } else {
-      // Wrong keystroke: reset combo, mark error for this word streak and play sound
-      wordErrorOccurredRef.current = true;
-      setCombo(0);
-      playKeystrokeSound(char);
     }
-  }, [gameStatus, gameInput, gameWords, currentGameIdx, gameBlanks, combo, setupWordGame, words, setWords, saveWords, setStats, setSessionWordCount, currentWord, setCurrentWord, setSessionErrors]);
+  }, [gameStatus, gameInput, gameWords, currentGameIdx, gameBlanks, combo, setupWordGame, words, setWords, saveWords, setStats, setSessionWordCount, currentWord, setCurrentWord, setSessionErrors, showToast]);
 
   const startPeekingCurrentBlank = useCallback(() => {
     if (gameStatus !== 'playing') return;
 
-    const currentBlankIdx = gameInput.findIndex(val => val === '');
-    if (currentBlankIdx === -1) return;
+    let currentBlankIdx = gameInput.findIndex(val => val === '');
+    if (currentBlankIdx === -1) {
+      const currentWord = gameWords[currentGameIdx];
+      if (!currentWord) return;
+      const firstWrongIdx = gameBlanks.findIndex((wordIdx, bIdx) => 
+        gameInput[bIdx].toLowerCase() !== currentWord.word[wordIdx].toLowerCase()
+      );
+      currentBlankIdx = firstWrongIdx !== -1 ? firstWrongIdx : gameBlanks.length - 1;
+    }
 
     const currentWord = gameWords[currentGameIdx];
     if (!currentWord) return;
@@ -1279,6 +1318,20 @@ export default function App() {
         return;
       }
 
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        // Clear the last filled blank so user can correct
+        const lastFilledIdx = [...gameInput].map((v, i) => ({ v, i })).reverse().find(x => x.v !== '')?.i;
+        if (lastFilledIdx !== undefined) {
+          const newInput = [...gameInput];
+          newInput[lastFilledIdx] = '';
+          setGameInput(newInput);
+          setPeekedBlankIdx(null);
+          playKeystrokeSound(e.key);
+        }
+        return;
+      }
+
       if (e.key.length === 1 && /[a-zA-Z]/.test(e.key)) {
         handleGameInput(e.key);
       }
@@ -1302,14 +1355,14 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isGameMode, gameStatus, handleGameInput, startPeekingCurrentBlank, stopPeeking]);
+  }, [isGameMode, gameStatus, gameInput, handleGameInput, startPeekingCurrentBlank, stopPeeking]);
 
   const currentWordId = currentWord?.id;
 
   // Update current word when words change or transition finishes
   useEffect(() => {
-    // When playing word game, do not switch words or speak background words
-    if (isGameMode) return;
+    // When playing word game or during auto-play, do not auto-jump words
+    if (isGameMode || isAutoPlaying) return;
 
     if (!isTransitioning) {
       if (filteredWords.length > 0) {
@@ -1357,9 +1410,16 @@ export default function App() {
         setCurrentWord(null);
       }
     }
-  }, [filteredWords, isTransitioning, currentWordId, isViewingHistory, isDictationMode, isEbbinghausMode, isGameMode]);
+  }, [filteredWords, isTransitioning, currentWordId, isViewingHistory, isDictationMode, isEbbinghausMode, isGameMode, isAutoPlaying]);
 
   const handleBack = useCallback(() => {
+    if (isAutoPlaying) {
+      if (filteredWords.length > 0) {
+        setAutoPlayIndex(prev => (prev - 1 + filteredWords.length) % filteredWords.length);
+      }
+      return;
+    }
+
     let newHistory = [...history];
     let prevWord;
     
@@ -1376,11 +1436,18 @@ export default function App() {
       setInput('');
       speakWordAndExample(prevWord.word, prevWord.example_sentence);
     }
-  }, [history, filteredWords]);
+  }, [history, filteredWords, isAutoPlaying]);
 
   const handleSkip = useCallback(() => {
     if (!currentWord) return;
     
+    if (isAutoPlaying) {
+      if (filteredWords.length > 0) {
+        setAutoPlayIndex(prev => (prev + 1) % filteredWords.length);
+      }
+      return;
+    }
+
     setIsTransitioning(true);
     
     if (isViewingHistory) {
@@ -1413,7 +1480,7 @@ export default function App() {
       setInput('');
       setIsViewingHistory(false);
     }, 200);
-  }, [currentWord, words, isViewingHistory]);
+  }, [currentWord, words, isViewingHistory, isAutoPlaying, filteredWords]);
 
   // Handle keyboard input
   useEffect(() => {
@@ -1466,12 +1533,21 @@ export default function App() {
         return;
       }
 
-      // Handle Space to read phrase
-      if (e.key === ' ') {
+      // Handle Space: in dictation mode, press Space once to display root!
+      if (e.key === ' ' || e.code === 'Space') {
         const targetWord = currentWord.word;
-        // If the next character to type is NOT a space, trigger speech
+        // If the next character to type is NOT a space
         if (targetWord[input.length] !== ' ') {
           e.preventDefault();
+          if (isDictationMode) {
+            const hasRootInfo = !!(currentWord.prefix || currentWord.root_core || currentWord.suffix);
+            if (!hasRootInfo) {
+              showToast(`"${currentWord.word}" 暂无词根数据`);
+            } else {
+              setShowDictationRoot(prev => !prev);
+            }
+            return;
+          }
           if (currentWord.phrase) {
             speakWord(currentWord.phrase);
           } else {
@@ -1507,16 +1583,19 @@ export default function App() {
           stopAutoPlay();
         }
         const targetWord = currentWord.word;
-        
-        // Check for error (only in dictation mode)
-        if (isDictationMode && e.key !== targetWord[input.length]) {
-          setHasError(true);
-        }
 
         // Only accept input if we haven't typed the full word yet
         if (input.length < targetWord.length) {
-          setInput(prev => prev + e.key);
+          const nextInput = input + e.key;
+          setInput(nextInput);
           playKeystrokeSound(e.key);
+
+          // In dictation mode: only check for error when typed to the very last letter
+          if (isDictationMode && nextInput.length === targetWord.length) {
+            if (nextInput !== targetWord) {
+              setHasError(true);
+            }
+          }
         }
       }
     };
@@ -2126,6 +2205,7 @@ export default function App() {
     if (!currentWord) return null;
     
     const target = currentWord.word;
+    const isFullLengthTyped = input.length === target.length;
     
     return (
       <div className="flex justify-center space-x-1 mt-8 text-3xl font-mono tracking-widest">
@@ -2134,7 +2214,16 @@ export default function App() {
           let colorClass = 'text-zinc-700'; // Not typed yet
           
           if (inputChar !== undefined) {
-            colorClass = inputChar === char ? 'text-emerald-400' : 'text-rose-500';
+            if (isDictationMode) {
+              if (isFullLengthTyped) {
+                colorClass = inputChar === char ? 'text-emerald-400' : 'text-rose-500';
+              } else {
+                // In the middle: display bright green, no error prompt
+                colorClass = 'text-emerald-400';
+              }
+            } else {
+              colorClass = inputChar === char ? 'text-emerald-400' : 'text-rose-500';
+            }
           }
           
           return (
@@ -2537,14 +2626,14 @@ export default function App() {
               {/* Main Word */}
               <div className="relative inline-block mb-6 min-w-[200px]">
                 {history.length > 0 && (
-                  <div className="absolute top-1/2 -translate-y-1/2 right-full mr-4 sm:mr-6 md:mr-8 flex items-center select-none z-10 group/prev pointer-events-auto">
+                  <div className="absolute top-1/2 -translate-y-1/2 right-full mr-12 sm:mr-16 md:mr-24 flex items-center select-none z-10 group/prev pointer-events-auto">
                     {previousWord && (
                       <span
                         onClick={(e) => {
                           e.preventDefault();
                           handleBack();
                         }}
-                        className="mr-1.5 text-xs font-mono text-zinc-400 opacity-80 group-hover/prev:text-emerald-400 group-hover/prev:opacity-100 transition-all cursor-pointer whitespace-nowrap max-w-[90px] sm:max-w-[130px] truncate select-none"
+                        className="mr-1.5 text-xs font-mono text-zinc-500 group-hover/prev:text-emerald-400 transition-all cursor-pointer whitespace-nowrap max-w-[90px] sm:max-w-[130px] truncate select-none"
                       >
                         {previousWord.word}
                       </span>
@@ -2561,7 +2650,7 @@ export default function App() {
                     </button>
                   </div>
                 )}
-                <div className="absolute top-1/2 -translate-y-1/2 left-full ml-4 sm:ml-6 md:ml-8 flex items-center select-none z-10 group/next pointer-events-auto">
+                <div className="absolute top-1/2 -translate-y-1/2 left-full ml-12 sm:ml-16 md:ml-24 flex items-center select-none z-10 group/next pointer-events-auto">
                   <button
                     onClick={(e) => {
                       e.preventDefault();
@@ -2578,7 +2667,7 @@ export default function App() {
                         e.preventDefault();
                         handleSkip();
                       }}
-                      className="ml-1.5 text-xs font-mono text-zinc-400 opacity-80 group-hover/next:text-emerald-400 group-hover/next:opacity-100 transition-all cursor-pointer whitespace-nowrap max-w-[90px] sm:max-w-[130px] truncate select-none"
+                      className="ml-1.5 text-xs font-mono text-zinc-500 group-hover/next:text-emerald-400 transition-all cursor-pointer whitespace-nowrap max-w-[90px] sm:max-w-[130px] truncate select-none"
                     >
                       {isDictationMode && !isHinted ? '•••••' : upcomingWord.word}
                     </span>
@@ -2732,15 +2821,14 @@ export default function App() {
                   </div>
                 )}
                 {(currentWord.prefix || currentWord.root_core || currentWord.suffix) ? (
-                  isDictationMode && !isHinted ? (
+                  isDictationMode && !isHinted && !showDictationRoot ? (
                     <div className="mt-4 flex justify-center">
                       <button
                         type="button"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          setIsHinted(true);
-                          setHasError(true);
+                          setShowDictationRoot(true);
                         }}
                         className="font-mono text-zinc-500 hover:text-zinc-300 text-xs inline-flex items-center gap-1.5 py-1 px-3 bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700 rounded-full transition-all cursor-pointer group shadow-sm select-none"
                         title="听写防剧透，点击偷看词根提示"
@@ -3309,31 +3397,66 @@ export default function App() {
                       )}
                     </AnimatePresence>
 
-                    <div className="text-5xl md:text-7xl font-bold tracking-widest text-white flex justify-center flex-wrap gap-x-2">
-                      {gameWords[currentGameIdx]?.word.split('').map((char, i) => {
-                        const isBlank = gameBlanks.includes(i);
-                        if (isBlank) {
-                          const blankIdx = gameBlanks.indexOf(i);
-                          const isCurrent = gameInput.findIndex(v => v === '') === blankIdx;
-                          const isPeeked = peekedBlankIdx === blankIdx;
-                          const isFilled = !!gameInput[blankIdx];
+                    <div className="text-4xl md:text-6xl font-bold tracking-widest text-white flex justify-center flex-wrap gap-x-2">
+                      {(() => {
+                        const currentGameWord = gameWords[currentGameIdx];
+                        const wordCharColors = getWordCharColors(currentGameWord);
+                        const textOpacity = gameStatus === 'correct' ? 'opacity-80' : 'opacity-60';
+
+                        return currentGameWord?.word.split('').map((char, i) => {
+                          const origColor = wordCharColors[i] || 'text-white';
+                          const isBlank = gameBlanks.includes(i);
+
+                          if (isBlank) {
+                            const blankIdx = gameBlanks.indexOf(i);
+                            const isCurrent = gameInput.findIndex(v => v === '') === blankIdx;
+                            const isPeeked = peekedBlankIdx === blankIdx;
+                            const isFilled = !!gameInput[blankIdx];
+                            const isAllFilled = gameInput.every(v => v !== '');
+                            const isCharCorrect = isFilled && gameInput[blankIdx].toLowerCase() === char.toLowerCase();
+
+                            let blankClass = 'border-zinc-800 text-transparent';
+                            if (isFilled) {
+                              if (isAllFilled) {
+                                // Only at the last letter do we judge whether correct
+                                if (isCharCorrect) {
+                                  // Correct letter: KEEP ORIGINAL COLOR with 60% opacity
+                                  blankClass = `border-current ${origColor} font-bold ${textOpacity}`;
+                                } else {
+                                  // Incorrect letter: mark red with 60% opacity
+                                  blankClass = `border-rose-500 text-rose-400 font-bold ${textOpacity}`;
+                                }
+                              } else {
+                                // In the middle: display in its original prefix/root/suffix color with 60% opacity
+                                blankClass = `border-current ${origColor} font-bold ${textOpacity}`;
+                              }
+                            } else if (isPeeked) {
+                              blankClass = 'border-amber-400 text-amber-300 font-bold scale-105';
+                            } else if (isCurrent) {
+                              blankClass = 'border-zinc-400 text-transparent';
+                            }
+
+                            return (
+                              <span 
+                                key={i} 
+                                className={`inline-block min-w-[1ch] border-b-4 mx-0.5 transition-all duration-300 ${blankClass}`}
+                              >
+                                {isFilled ? gameInput[blankIdx] : (isPeeked ? char : ' ')}
+                              </span>
+                            );
+                          }
+
+                          // Non-blank letter: display with 60% opacity
                           return (
                             <span 
                               key={i} 
-                              className={`inline-block min-w-[1ch] border-b-4 mx-0.5 transition-all duration-150 ${
-                                isFilled 
-                                  ? 'border-indigo-500 text-indigo-400 font-bold' 
-                                  : isPeeked
-                                    ? 'border-amber-400 text-amber-300 font-bold scale-105'
-                                    : isCurrent ? 'border-zinc-400 text-transparent' : 'border-zinc-800 text-transparent'
-                              }`}
+                              className={`${origColor} font-bold ${textOpacity} transition-all duration-300`}
                             >
-                              {isFilled ? gameInput[blankIdx] : (isPeeked ? char : ' ')}
+                              {char}
                             </span>
                           );
-                        }
-                        return <span key={i} className="text-zinc-600">{char}</span>;
-                      })}
+                        });
+                      })()}
                     </div>
                   </div>
 
