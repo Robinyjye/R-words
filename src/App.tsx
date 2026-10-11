@@ -102,19 +102,9 @@ const renderHighlightedWord = (wordObj: WordState) => {
       currentSpan += word[i];
     } else {
       if (currentSpan) {
-        let meaning = null;
-        if (currentColor === 'text-emerald-400' && wordObj.root_meaning) {
-          meaning = wordObj.root_meaning;
-        }
-
         spans.push(
-          <span key={i} className={`${currentColor || ''} relative inline-block`}>
+          <span key={i} className={currentColor || ''}>
             {currentSpan}
-            {meaning && (
-              <span className="absolute left-1/2 -translate-x-1/2 top-full mt-2 text-sm text-zinc-400 whitespace-nowrap font-sans font-normal tracking-normal pointer-events-none select-none">
-                {meaning}
-              </span>
-            )}
           </span>
         );
       }
@@ -123,19 +113,9 @@ const renderHighlightedWord = (wordObj: WordState) => {
     }
   }
   if (currentSpan) {
-    let meaning = null;
-    if (currentColor === 'text-emerald-400' && wordObj.root_meaning) {
-      meaning = wordObj.root_meaning;
-    }
-
     spans.push(
-      <span key="last" className={`${currentColor || ''} relative inline-block`}>
+      <span key="last" className={currentColor || ''}>
         {currentSpan}
-        {meaning && (
-          <span className="absolute left-1/2 -translate-x-1/2 top-full mt-2 text-sm text-zinc-400 whitespace-nowrap font-sans font-normal tracking-normal pointer-events-none select-none">
-            {meaning}
-          </span>
-        )}
       </span>
     );
   }
@@ -347,9 +327,8 @@ export default function App() {
   }, [words, currentWord?.root_core]);
 
   // Upcoming word to practice preview (low visual weight, compact preview)
-  const upcomingWord = useMemo(() => {
-    if (!currentWord || filteredWords.length <= 1) return null;
-
+  // Active sequence of words according to current mode (Ebbinghaus queue vs normal list)
+  const currentModeWords = useMemo(() => {
     if (isEbbinghausMode) {
       const now = Date.now();
       const includeMastered = activeList === 'Mastered Words';
@@ -357,9 +336,8 @@ export default function App() {
         (includeMastered || !w.is_mastered) && isWordDue(w, isDictationMode, now)
       );
 
-      const remainingDue = dueWords.filter(w => w.id !== currentWord.id);
-      if (remainingDue.length > 0) {
-        remainingDue.sort((a, b) => {
+      if (dueWords.length > 1) {
+        return [...dueWords].sort((a, b) => {
           const stageA = a.ebbinghaus_stage ?? 0;
           const stageB = b.ebbinghaus_stage ?? 0;
           if (stageA > 0 && stageB === 0) return -1;
@@ -372,38 +350,24 @@ export default function App() {
           if (!a.has_error && b.has_error) return 1;
           return 0;
         });
-        return remainingDue[0];
       }
-      return null;
     }
 
-    // Normal sequential mode:
-    const includeMastered = activeList === 'Mastered Words';
-    const isCompleted = (w: WordState) =>
-      isDictationMode ? w.is_completed_dictation : w.is_completed_normal;
+    return filteredWords;
+  }, [filteredWords, isEbbinghausMode, isDictationMode, activeList]);
 
-    const currentIndex = filteredWords.findIndex(w => w.id === currentWord.id);
+  // Upcoming word to practice preview (strictly matches the next word in the current mode sequence)
+  const upcomingWord = useMemo(() => {
+    if (!currentWord || currentModeWords.length <= 1) return null;
 
-    if (currentIndex !== -1) {
-      // 1. Look for next uncompleted word after current word
-      const nextAfter = filteredWords.slice(currentIndex + 1).find(w =>
-        (includeMastered || !w.is_mastered) && !isCompleted(w)
-      );
-      if (nextAfter) return nextAfter;
-
-      // 2. Wrap around and look before current word
-      const nextBefore = filteredWords.slice(0, currentIndex).find(w =>
-        (includeMastered || !w.is_mastered) && !isCompleted(w)
-      );
-      if (nextBefore) return nextBefore;
-
-      // 3. Fallback: next word in sequential order
-      const nextAny = filteredWords[(currentIndex + 1) % filteredWords.length];
-      if (nextAny && nextAny.id !== currentWord.id) return nextAny;
+    const currentIdx = currentModeWords.findIndex(w => w.id === currentWord.id);
+    if (currentIdx !== -1) {
+      const nextIdx = (currentIdx + 1) % currentModeWords.length;
+      return currentModeWords[nextIdx];
     }
 
-    return null;
-  }, [currentWord, filteredWords, isEbbinghausMode, isDictationMode, activeList]);
+    return currentModeWords[0] || null;
+  }, [currentWord, currentModeWords]);
 
   // Previous word preview
   const previousWord = useMemo(() => {
@@ -457,8 +421,12 @@ export default function App() {
   const [autoPlayIndex, setAutoPlayIndex] = useState<number>(0);
   const autoPlayCancelRef = useRef<(() => void) | null>(null);
   const autoPlayClickTimerRef = useRef<any>(null);
+  const currentPlayingWordIdRef = useRef<string | null>(null);
+  const currentModeWordsRef = useRef<WordState[]>(currentModeWords);
+  currentModeWordsRef.current = currentModeWords;
 
   const stopAutoPlay = useCallback(() => {
+    currentPlayingWordIdRef.current = null;
     if (autoPlayCancelRef.current) {
       autoPlayCancelRef.current();
       autoPlayCancelRef.current = null;
@@ -479,11 +447,11 @@ export default function App() {
       showToast(`播放速度已设为: ${nextSpeed}x`);
 
       if (!isAutoPlaying) {
-        if (filteredWords.length === 0) {
+        if (currentModeWords.length === 0) {
           showToast(`当前列表 "${activeList}" 没有单词`);
           return;
         }
-        const currentIdx = filteredWords.findIndex(w => w.id === currentWord?.id);
+        const currentIdx = currentModeWords.findIndex(w => w.id === currentWord?.id);
         const startIdx = currentIdx >= 0 ? currentIdx : 0;
         setAutoPlayIndex(startIdx);
         setIsAutoPlaying(true);
@@ -499,18 +467,18 @@ export default function App() {
         stopAutoPlay();
         showToast('已暂停自动循环播放');
       } else {
-        if (filteredWords.length === 0) {
+        if (currentModeWords.length === 0) {
           showToast(`当前列表 "${activeList}" 没有单词`);
           return;
         }
-        const currentIdx = filteredWords.findIndex(w => w.id === currentWord?.id);
+        const currentIdx = currentModeWords.findIndex(w => w.id === currentWord?.id);
         const startIdx = currentIdx >= 0 ? currentIdx : 0;
         setAutoPlayIndex(startIdx);
         setIsAutoPlaying(true);
         showToast(`开始自动循环播放 (${autoPlaySpeed}x)`);
       }
     }, 320);
-  }, [autoPlaySpeed, isAutoPlaying, filteredWords, activeList, currentWord, stopAutoPlay, showToast]);
+  }, [autoPlaySpeed, isAutoPlaying, currentModeWords, activeList, currentWord, stopAutoPlay, showToast]);
 
   useEffect(() => {
     return () => {
@@ -527,9 +495,10 @@ export default function App() {
     }
   }, [isGameMode, isAutoPlaying, stopAutoPlay]);
 
-  // Auto-play loop sequence effect
+  // Auto-play loop sequence effect: strictly iterates through currentModeWords in identical order to upcomingWord preview
   useEffect(() => {
-    if (!isAutoPlaying || filteredWords.length === 0) {
+    if (!isAutoPlaying || currentModeWords.length === 0) {
+      currentPlayingWordIdRef.current = null;
       if (autoPlayCancelRef.current) {
         autoPlayCancelRef.current();
         autoPlayCancelRef.current = null;
@@ -537,19 +506,45 @@ export default function App() {
       return;
     }
 
-    const safeIndex = autoPlayIndex % filteredWords.length;
-    const targetWord = filteredWords[safeIndex];
+    // Strictly resolve the target index based on currentModeWords position
+    const totalWords = currentModeWords.length;
+    const safeIndex = ((autoPlayIndex % totalWords) + totalWords) % totalWords;
+    const targetWord = currentModeWords[safeIndex];
+
     if (!targetWord) return;
 
-    // Show the target word on the flashcard
+    // Show the target word on the flashcard in strict mode order
     setCurrentWord(targetWord);
+    setInput('');
+    setHasError(false);
+    setIsHinted(false);
+    setShowDictationRoot(false);
+
+    // If this word is already actively playing, do not restart its audio sequence
+    if (currentPlayingWordIdRef.current === targetWord.id) {
+      return;
+    }
+
+    currentPlayingWordIdRef.current = targetWord.id;
+
+    if (autoPlayCancelRef.current) {
+      autoPlayCancelRef.current();
+      autoPlayCancelRef.current = null;
+    }
 
     autoPlayCancelRef.current = playWordAndExampleSequence(
       targetWord.word,
       targetWord.example_sentence,
       autoPlaySpeed,
       () => {
-        setAutoPlayIndex(prev => (prev + 1) % filteredWords.length);
+        currentPlayingWordIdRef.current = null;
+        // Strictly advance to the next index in currentModeWords, wrapping around seamlessly to 0
+        setAutoPlayIndex(() => {
+          const currentList = currentModeWordsRef.current;
+          const listLength = currentList.length;
+          if (listLength === 0) return 0;
+          return (safeIndex + 1) % listLength;
+        });
       }
     );
 
@@ -559,7 +554,7 @@ export default function App() {
         autoPlayCancelRef.current = null;
       }
     };
-  }, [isAutoPlaying, autoPlayIndex, filteredWords, autoPlaySpeed]);
+  }, [isAutoPlaying, autoPlayIndex, autoPlaySpeed, currentModeWords]);
 
   // Search State with Autocomplete
   const [searchTerm, setSearchTerm] = useState('');
@@ -1346,24 +1341,15 @@ export default function App() {
 
   // Update current word when words change or transition finishes
   useEffect(() => {
-    // When playing word game, do not switch words or speak background words
-    if (isGameMode) return;
+    // When playing word game or running auto-play, do not hijack or jump words
+    if (isGameMode || isAutoPlaying) return;
 
     if (!isTransitioning) {
       if (filteredWords.length > 0) {
-        // Prevent auto-jumping if the current word is still valid
-        const isCurrentWordStillValid = currentWordId && filteredWords.some(w => {
-          if (w.id !== currentWordId) return false;
-          if (isViewingHistory) return true;
-          
-          if (isEbbinghausMode) {
-            return isWordDue(w, isDictationMode, Date.now());
-          }
-          
-          return isDictationMode ? !w.is_completed_dictation : !w.is_completed_normal;
-        });
+        // Prevent auto-jumping: if current word is already valid and belongs to the current list, preserve it!
+        const isCurrentWordInList = currentWordId && filteredWords.some(w => w.id === currentWordId);
 
-        if (isCurrentWordStillValid) {
+        if (isCurrentWordInList) {
           return;
         }
 
@@ -1372,7 +1358,7 @@ export default function App() {
           isDictationMode, 
           isEbbinghausMode,
           activeList === 'Mastered Words'
-        );
+        ) || filteredWords[0];
         
         if (next) {
           if (next.id !== currentWordId) {
@@ -1395,7 +1381,7 @@ export default function App() {
         setCurrentWord(null);
       }
     }
-  }, [filteredWords, isTransitioning, currentWordId, isViewingHistory, isDictationMode, isEbbinghausMode, isGameMode]);
+  }, [filteredWords, isTransitioning, currentWordId, isViewingHistory, isDictationMode, isEbbinghausMode, isGameMode, isAutoPlaying]);
 
   const handleBack = useCallback(() => {
     let newHistory = [...history];
@@ -1418,40 +1404,28 @@ export default function App() {
 
   const handleSkip = useCallback(() => {
     if (!currentWord) return;
-    
-    setIsTransitioning(true);
-    
-    if (isViewingHistory) {
-      setTimeout(() => {
-        setCurrentWord(null);
-        setIsTransitioning(false);
-        setInput('');
-        setIsViewingHistory(false);
-      }, 200);
+
+    if (currentModeWords.length <= 1) {
+      showToast('当前列表中只有 1 个单词');
       return;
     }
-    
-    // Move current word to the end of the list so it appears later
-    const updatedWords = [...words];
-    const currentIndex = updatedWords.findIndex(w => w.id === currentWord.id);
-    if (currentIndex !== -1) {
-      const [wordToMove] = updatedWords.splice(currentIndex, 1);
-      updatedWords.push(wordToMove);
-      setWords(updatedWords);
-      saveWords(updatedWords);
-    }
-    
-    setTimeout(() => {
-      setHistory(prev => {
-        if (prev[prev.length - 1] === currentWord.id) return prev;
-        return [...prev, currentWord.id];
-      });
-      setCurrentWord(null);
-      setIsTransitioning(false);
-      setInput('');
-      setIsViewingHistory(false);
-    }, 200);
-  }, [currentWord, words, isViewingHistory]);
+
+    const nextTarget = upcomingWord || currentModeWords.find(w => w.id !== currentWord.id);
+    if (!nextTarget) return;
+
+    // Record in history so user can click ArrowLeft to go back
+    setHistory(prev => {
+      if (prev[prev.length - 1] === currentWord.id) return prev;
+      return [...prev, currentWord.id];
+    });
+
+    setCurrentWord(nextTarget);
+    setInput('');
+    setIsViewingHistory(false);
+    setHasError(false);
+    setIsHinted(false);
+    speakWordAndExample(nextTarget.word, nextTarget.example_sentence);
+  }, [currentWord, currentModeWords, upcomingWord, showToast]);
 
   // Handle keyboard input
   useEffect(() => {
@@ -1679,13 +1653,32 @@ export default function App() {
 
     // Pause before next word
     setTimeout(() => {
-      if (autoMastered) {
-        setHistory(prev => {
-          if (prev[prev.length - 1] === currentWord.id) return prev;
-          return [...prev, currentWord.id];
-        });
-        setCurrentWord(null);
+      setHistory(prev => {
+        if (prev[prev.length - 1] === currentWord.id) return prev;
+        return [...prev, currentWord.id];
+      });
+
+      const updatedListWords = updatedWords.filter(w => (w.listName || 'Default List') === activeList);
+      const nextWord = getNextWordToReview(
+        updatedListWords,
+        isDictationMode,
+        isEbbinghausMode,
+        activeList === 'Mastered Words'
+      );
+
+      if (nextWord && nextWord.id !== currentWord.id) {
+        setCurrentWord(nextWord);
+        speakWordAndExample(nextWord.word, nextWord.example_sentence);
+      } else {
+        const nextInList = updatedListWords.find(w => w.id !== currentWord.id);
+        if (nextInList) {
+          setCurrentWord(nextInList);
+          speakWordAndExample(nextInList.word, nextInList.example_sentence);
+        } else {
+          setCurrentWord(autoMastered ? null : updatedWord);
+        }
       }
+
       setIsTransitioning(false);
       setInput('');
       setIsViewingHistory(false);
@@ -2597,37 +2590,45 @@ export default function App() {
               {/* Main Word */}
               <div className="relative inline-block mb-6 min-w-[200px]">
                 {history.length > 0 && (
-                  <div className="absolute top-1/2 -translate-y-1/2 right-full mr-12 sm:mr-16 md:mr-24 flex items-center select-none z-10 group/prev pointer-events-auto">
+                  <div className="absolute top-1/2 -translate-y-1/2 right-full mr-4 sm:mr-8 md:mr-12 flex items-center select-none z-20 group/prev pointer-events-auto">
                     {previousWord && (
                       <span
                         onClick={(e) => {
                           e.preventDefault();
+                          e.stopPropagation();
                           handleBack();
                         }}
                         className="mr-1.5 text-xs font-mono text-zinc-500 group-hover/prev:text-emerald-400 transition-all cursor-pointer whitespace-nowrap max-w-[90px] sm:max-w-[130px] truncate select-none"
+                        title="上一个单词"
                       >
                         {previousWord.word}
                       </span>
                     )}
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.preventDefault();
+                        e.stopPropagation();
                         handleBack();
                       }}
-                      className="p-2 text-zinc-500 group-hover/prev:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none shrink-0"
+                      className="p-2 text-zinc-500 group-hover/prev:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none shrink-0 cursor-pointer"
+                      title="上一个单词 (ArrowLeft)"
                       tabIndex={-1}
                     >
                       <ArrowLeft size={24} />
                     </button>
                   </div>
                 )}
-                <div className="absolute top-1/2 -translate-y-1/2 left-full ml-12 sm:ml-16 md:ml-24 flex items-center select-none z-10 group/next pointer-events-auto">
+                <div className="absolute top-1/2 -translate-y-1/2 left-full ml-4 sm:ml-8 md:ml-12 flex items-center select-none z-20 group/next pointer-events-auto">
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
                       handleSkip();
                     }}
-                    className="p-2 text-zinc-500 group-hover/next:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none shrink-0"
+                    className="p-2 text-zinc-500 group-hover/next:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none shrink-0 cursor-pointer"
+                    title="下一个单词 (ArrowRight)"
                     tabIndex={-1}
                   >
                     <ArrowRight size={24} />
@@ -2636,9 +2637,11 @@ export default function App() {
                     <span
                       onClick={(e) => {
                         e.preventDefault();
+                        e.stopPropagation();
                         handleSkip();
                       }}
                       className="ml-1.5 text-xs font-mono text-zinc-500 group-hover/next:text-emerald-400 transition-all cursor-pointer whitespace-nowrap max-w-[90px] sm:max-w-[130px] truncate select-none"
+                      title="点击切换至下一个单词"
                     >
                       {isDictationMode && !isHinted ? '•••••' : upcomingWord.word}
                     </span>
@@ -2689,8 +2692,73 @@ export default function App() {
                 )}
               </div>
 
+              {/* Root Breakdown directly under the main word (as shown in Image 1) */}
+              {(currentWord.prefix || currentWord.root_core || currentWord.suffix) ? (
+                isDictationMode && !isHinted && !showDictationRoot ? (
+                  <div className="mt-3 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setShowDictationRoot(true);
+                      }}
+                      className="font-mono text-zinc-500 hover:text-zinc-300 text-xs inline-flex items-center gap-1.5 py-1 px-3 bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700 rounded-full transition-all cursor-pointer group shadow-sm select-none"
+                      title="听写防剧透，点击偷看词根提示"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500/60 group-hover:bg-indigo-400 transition-colors" />
+                      <span>词根已遮挡 · 点击偷看</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-3 font-mono text-zinc-400 text-sm flex flex-wrap justify-center items-center gap-1">
+                    {currentWord.prefix && (
+                      <span>{currentWord.prefix} {currentWord.prefix_meaning && `(${currentWord.prefix_meaning})`}</span>
+                    )}
+                    {currentWord.prefix && (currentWord.root_core || currentWord.suffix) && <span> + </span>}
+                    {currentWord.root_core && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setSelectedRootInfo({
+                            rootCore: currentWord.root_core!,
+                            rootMeaning: currentWord.root_meaning,
+                          });
+                        }}
+                        className="relative inline-flex items-center gap-1 px-2.5 py-0.5 mr-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 hover:text-indigo-200 transition-all cursor-pointer group shadow-sm text-sm font-mono select-none"
+                        title={`该词根共收录 ${currentWordSameRootCount} 个单词，点击查看完整列表`}
+                      >
+                        <Sparkles size={11} className="text-indigo-400 group-hover:scale-110 transition-transform" />
+                        <span className="font-bold underline decoration-indigo-400/50 underline-offset-2">
+                          {currentWord.root_core}
+                        </span>
+                        {currentWord.root_meaning && (
+                          <span className="text-indigo-200/80 font-normal">
+                            ({currentWord.root_meaning})
+                          </span>
+                        )}
+                        {currentWordSameRootCount > 0 && (
+                          <span 
+                            className="absolute -top-2 -right-2 min-w-[17px] h-[17px] px-1 bg-indigo-600 text-white border border-indigo-400/50 rounded-full text-[10px] font-mono font-bold flex items-center justify-center shadow-md shadow-indigo-950/60 group-hover:bg-indigo-500 transition-colors"
+                            title={`该词根共收录 ${currentWordSameRootCount} 个单词`}
+                          >
+                            {currentWordSameRootCount}
+                          </span>
+                        )}
+                      </button>
+                    )}
+                    {currentWord.root_core && currentWord.suffix && <span> + </span>}
+                    {currentWord.suffix && (
+                      <span>{currentWord.suffix} {currentWord.suffix_meaning && `(${currentWord.suffix_meaning})`}</span>
+                    )}
+                  </div>
+                )
+              ) : null}
+
               {/* Word Actions */}
-              <div className="flex justify-center items-center space-x-4 mt-8 mb-8">
+              <div className="flex justify-center items-center space-x-4 mt-5 mb-8">
                 {currentWord.is_mastered || activeList === 'Mastered Words' ? (
                   <button
                     onClick={(e) => {
@@ -2791,69 +2859,6 @@ export default function App() {
                     </button>
                   </div>
                 )}
-                {(currentWord.prefix || currentWord.root_core || currentWord.suffix) ? (
-                  isDictationMode && !isHinted && !showDictationRoot ? (
-                    <div className="mt-4 flex justify-center">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setShowDictationRoot(true);
-                        }}
-                        className="font-mono text-zinc-500 hover:text-zinc-300 text-xs inline-flex items-center gap-1.5 py-1 px-3 bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700 rounded-full transition-all cursor-pointer group shadow-sm select-none"
-                        title="听写防剧透，点击偷看词根提示"
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500/60 group-hover:bg-indigo-400 transition-colors" />
-                        <span>词根已遮挡 · 点击偷看</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="mt-4 font-mono text-zinc-400 text-sm flex flex-wrap justify-center items-center gap-1">
-                      {currentWord.prefix && (
-                        <span>{currentWord.prefix} {currentWord.prefix_meaning && `(${currentWord.prefix_meaning})`}</span>
-                      )}
-                      {currentWord.prefix && (currentWord.root_core || currentWord.suffix) && <span> + </span>}
-                      {currentWord.root_core && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setSelectedRootInfo({
-                              rootCore: currentWord.root_core!,
-                              rootMeaning: currentWord.root_meaning,
-                            });
-                          }}
-                          className="relative inline-flex items-center gap-1 px-2.5 py-0.5 mr-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 hover:text-indigo-200 transition-all cursor-pointer group shadow-sm text-sm font-mono select-none"
-                          title={`该词根共收录 ${currentWordSameRootCount} 个单词，点击查看完整列表`}
-                        >
-                          <Sparkles size={11} className="text-indigo-400 group-hover:scale-110 transition-transform" />
-                          <span className="font-bold underline decoration-indigo-400/50 underline-offset-2">
-                            {currentWord.root_core}
-                          </span>
-                          {currentWord.root_meaning && (
-                            <span className="text-indigo-200/80 font-normal">
-                              ({currentWord.root_meaning})
-                            </span>
-                          )}
-                          {currentWordSameRootCount > 0 && (
-                            <span 
-                              className="absolute -top-2 -right-2 min-w-[17px] h-[17px] px-1 bg-indigo-600 text-white border border-indigo-400/50 rounded-full text-[10px] font-mono font-bold flex items-center justify-center shadow-md shadow-indigo-950/60 group-hover:bg-indigo-500 transition-colors"
-                              title={`该词根共收录 ${currentWordSameRootCount} 个单词`}
-                            >
-                              {currentWordSameRootCount}
-                            </span>
-                          )}
-                        </button>
-                      )}
-                      {currentWord.root_core && currentWord.suffix && <span> + </span>}
-                      {currentWord.suffix && (
-                        <span>{currentWord.suffix} {currentWord.suffix_meaning && `(${currentWord.suffix_meaning})`}</span>
-                      )}
-                    </div>
-                  )
-                ) : null}
                 {currentWord.phrase && (
                   <div className="flex items-center justify-center space-x-2 mt-2">
                     <p className="text-lg text-emerald-400/90 font-medium">

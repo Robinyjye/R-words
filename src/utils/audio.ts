@@ -236,8 +236,14 @@ export const playSnareDrum = () => {
   }
 };
 
+let speakSequenceTimer: any = null;
+
 export const speakWord = (word: string) => {
   if ('speechSynthesis' in window) {
+    if (speakSequenceTimer) {
+      clearTimeout(speakSequenceTimer);
+      speakSequenceTimer = null;
+    }
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(word);
     utterance.lang = 'en-US';
@@ -248,19 +254,31 @@ export const speakWord = (word: string) => {
 
 export const speakWordAndExample = (word: string, example?: string) => {
   if ('speechSynthesis' in window) {
+    if (speakSequenceTimer) {
+      clearTimeout(speakSequenceTimer);
+      speakSequenceTimer = null;
+    }
     window.speechSynthesis.cancel();
     
     const utterance1 = new SpeechSynthesisUtterance(word);
     utterance1.lang = 'en-US';
     utterance1.rate = 0.9;
-    window.speechSynthesis.speak(utterance1);
     
-    if (example) {
-      const utterance2 = new SpeechSynthesisUtterance(example);
-      utterance2.lang = 'en-US';
-      utterance2.rate = 0.9;
-      window.speechSynthesis.speak(utterance2);
+    if (example && example.trim()) {
+      utterance1.onend = () => {
+        speakSequenceTimer = setTimeout(() => {
+          speakSequenceTimer = null;
+          if ('speechSynthesis' in window) {
+            const utterance2 = new SpeechSynthesisUtterance(example.trim());
+            utterance2.lang = 'en-US';
+            utterance2.rate = 0.92;
+            window.speechSynthesis.speak(utterance2);
+          }
+        }, 350);
+      };
     }
+    
+    window.speechSynthesis.speak(utterance1);
   }
 };
 

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { Volume2, Sparkles, ArrowRight, CheckCircle2, RotateCcw, ZoomIn, ZoomOut, Layers, Info, Link2, GitCompare, BookOpen } from 'lucide-react';
 import { WordState } from '../utils/word';
-import { speakWord } from '../utils/audio';
+import { speakWord, speakWordAndExample } from '../utils/audio';
 
 interface RootRelationshipGraphProps {
   rootCore: string;
@@ -852,9 +852,9 @@ export const RootRelationshipGraph: React.FC<RootRelationshipGraphProps> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={() => speakWord(morphologyComparison.centerWord.word)}
+                    onClick={() => speakWordAndExample(morphologyComparison.centerWord.word, morphologyComparison.centerWord.example_sentence)}
                     className="p-1 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors"
-                    title="朗读中心词"
+                    title="朗读中心词及例句"
                   >
                     <Volume2 size={13} />
                   </button>
@@ -908,9 +908,9 @@ export const RootRelationshipGraph: React.FC<RootRelationshipGraphProps> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={() => speakWord(morphologyComparison.targetWord.word)}
+                    onClick={() => speakWordAndExample(morphologyComparison.targetWord.word, morphologyComparison.targetWord.example_sentence)}
                     className="p-1 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors"
-                    title="朗读关联词"
+                    title="朗读关联词及例句"
                   >
                     <Volume2 size={13} />
                   </button>

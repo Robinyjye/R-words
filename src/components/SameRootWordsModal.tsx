@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { X, Volume2, Sparkles, ArrowRight, CheckCircle2, Search, BookOpen, Layers, GitFork } from 'lucide-react';
 import { WordState } from '../utils/word';
-import { speakWord } from '../utils/audio';
+import { speakWord, speakWordAndExample } from '../utils/audio';
 import { generateExampleSentenceForWord } from '../utils/sentence';
 import { D3RootMorphologyGraph } from './D3RootMorphologyGraph';
 
@@ -389,10 +389,10 @@ export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        speakWord(wordItem.word);
+                        speakWordAndExample(wordItem.word, wordItem.example_sentence);
                       }}
                       className="p-2 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors"
-                      title="朗读单词"
+                      title="朗读单词及例句"
                     >
                       <Volume2 size={15} />
                     </button>

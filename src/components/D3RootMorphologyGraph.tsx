@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useMemo, useState } from 'react';
 import * as d3 from 'd3';
 import { Volume2, ArrowRight, Sparkles, ZoomIn, ZoomOut, RotateCcw, Maximize2, Layers } from 'lucide-react';
 import { WordState } from '../utils/word';
-import { speakWord } from '../utils/audio';
+import { speakWord, speakWordAndExample } from '../utils/audio';
 
 interface D3RootMorphologyGraphProps {
   rootCore: string;
@@ -541,7 +541,7 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
         .on('mouseleave', () => setHoveredWordId(null))
         .on('click', () => {
           setSelectedWord(d.wordItem);
-          speakWord(d.word);
+          speakWordAndExample(d.word, d.wordItem.example_sentence);
         });
 
       // Background rect
@@ -601,7 +601,7 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
         .attr('cursor', 'pointer')
         .on('click', (e) => {
           e.stopPropagation();
-          speakWord(d.word);
+          speakWordAndExample(d.word, d.wordItem.example_sentence);
         });
 
       speakerBtn
@@ -726,9 +726,9 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => speakWord(selectedWord.word)}
+              onClick={() => speakWordAndExample(selectedWord.word, selectedWord.example_sentence)}
               className="p-1 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors"
-              title="朗读"
+              title="朗读单词及例句"
             >
               <Volume2 size={14} />
             </button>

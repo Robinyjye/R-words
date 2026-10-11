@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Volume2, Search, ArrowRight, BookOpen, Undo2, CheckCircle2, Eye, EyeOff, Layers, Database } from 'lucide-react';
 import { WordState } from '../utils/word';
-import { speakWord } from '../utils/audio';
+import { speakWord, speakWordAndExample } from '../utils/audio';
 
 interface WordListModalProps {
   isOpen: boolean;
@@ -326,10 +326,10 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          speakWord(item.word);
+                          speakWordAndExample(item.word, item.example_sentence);
                         }}
                         className="p-1 text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors"
-                        title="朗读单词"
+                        title="朗读单词及例句"
                       >
                         <Volume2 size={14} />
                       </button>
