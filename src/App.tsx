@@ -8,7 +8,7 @@ import { WordState } from './utils/word';
 import { loadWords, saveWords, getNextWordToReview, isWordDue, EBBINGHAUS_INTERVALS } from './utils/storage';
 import { enrichWords } from './utils/gemini';
 import { searchSimilarWords } from './utils/search';
-import { playKeystrokeSound, playSuccessSound, speakWord, speakWordAndExample, playWordAndExampleSequence, playComboSound } from './utils/audio';
+import { playKeystrokeSound, playSuccessSound, speakWord, speakWordAndExample, playWordAndExampleSequence, playComboSound, playChimeArpeggio } from './utils/audio';
 import { ImportModal } from './components/ImportModal';
 import { StatsModal } from './components/StatsModal';
 import { RootDetectiveGame } from './components/RootDetectiveGame';
@@ -326,6 +326,22 @@ export default function App() {
     }).length;
   }, [words, currentWord?.root_core]);
 
+  // Auto-play list words and examples
+  const [isAutoPlaying, setIsAutoPlaying] = useState<boolean>(false);
+  const [autoPlaySpeed, setAutoPlaySpeed] = useState<1 | 1.2>(() => {
+    try {
+      const saved = localStorage.getItem('ebbinghaus_autoplay_speed');
+      if (saved && (saved === '1' || saved === '1.2')) {
+        return Number(saved) as 1 | 1.2;
+      }
+    } catch (e) {}
+    return 1;
+  });
+  const [autoPlayIndex, setAutoPlayIndex] = useState<number>(0);
+  const autoPlayCancelRef = useRef<(() => void) | null>(null);
+  const autoPlayClickTimerRef = useRef<any>(null);
+  const currentPlayingWordIdRef = useRef<string | null>(null);
+
   // Upcoming word to practice preview (low visual weight, compact preview)
   // Active sequence of words according to current mode (Ebbinghaus queue vs normal list)
   const currentModeWords = useMemo(() => {
@@ -369,12 +385,25 @@ export default function App() {
     return currentModeWords[0] || null;
   }, [currentWord, currentModeWords]);
 
-  // Previous word preview
+  // Previous word preview (accurately shows the word just read/visited)
   const previousWord = useMemo(() => {
-    if (history.length === 0) return null;
-    const prevId = history[history.length - 1];
-    return filteredWords.find(w => w.id === prevId) || words.find(w => w.id === prevId) || null;
-  }, [history, filteredWords, words]);
+    if (history.length > 0) {
+      const prevId = history[history.length - 1];
+      const found = currentModeWords.find(w => w.id === prevId) || filteredWords.find(w => w.id === prevId) || words.find(w => w.id === prevId);
+      if (found && found.id !== currentWord?.id) return found;
+    }
+
+    // In auto-play, if history is empty or last history is current word, show the previous word in currentModeWords loop
+    if (isAutoPlaying && currentWord && currentModeWords.length > 1) {
+      const currentIdx = currentModeWords.findIndex(w => w.id === currentWord.id);
+      if (currentIdx !== -1) {
+        const prevIdx = (currentIdx - 1 + currentModeWords.length) % currentModeWords.length;
+        return currentModeWords[prevIdx];
+      }
+    }
+
+    return null;
+  }, [history, currentModeWords, filteredWords, words, isAutoPlaying, currentWord]);
 
   // Game State
   const [isGameMode, setIsGameMode] = useState(false);
@@ -407,21 +436,6 @@ export default function App() {
   const [selectedRootInfo, setSelectedRootInfo] = useState<{ rootCore: string; rootMeaning?: string } | null>(null);
   const [showWordListModal, setShowWordListModal] = useState(false);
 
-  // Auto-play list words and examples
-  const [isAutoPlaying, setIsAutoPlaying] = useState<boolean>(false);
-  const [autoPlaySpeed, setAutoPlaySpeed] = useState<1 | 1.2>(() => {
-    try {
-      const saved = localStorage.getItem('ebbinghaus_autoplay_speed');
-      if (saved && (saved === '1' || saved === '1.2')) {
-        return Number(saved) as 1 | 1.2;
-      }
-    } catch (e) {}
-    return 1;
-  });
-  const [autoPlayIndex, setAutoPlayIndex] = useState<number>(0);
-  const autoPlayCancelRef = useRef<(() => void) | null>(null);
-  const autoPlayClickTimerRef = useRef<any>(null);
-  const currentPlayingWordIdRef = useRef<string | null>(null);
   const currentModeWordsRef = useRef<WordState[]>(currentModeWords);
   currentModeWordsRef.current = currentModeWords;
 
@@ -538,6 +552,11 @@ export default function App() {
       autoPlaySpeed,
       () => {
         currentPlayingWordIdRef.current = null;
+        // Record this word that just finished playing into history so previousWord shows it
+        setHistory(prev => {
+          if (prev[prev.length - 1] === targetWord.id) return prev;
+          return [...prev, targetWord.id];
+        });
         // Strictly advance to the next index in currentModeWords, wrapping around seamlessly to 0
         setAutoPlayIndex(() => {
           const currentList = currentModeWordsRef.current;
@@ -1358,7 +1377,7 @@ export default function App() {
           isDictationMode, 
           isEbbinghausMode,
           activeList === 'Mastered Words'
-        ) || filteredWords[0];
+        );
         
         if (next) {
           if (next.id !== currentWordId) {
@@ -1666,17 +1685,12 @@ export default function App() {
         activeList === 'Mastered Words'
       );
 
-      if (nextWord && nextWord.id !== currentWord.id) {
+      if (nextWord) {
         setCurrentWord(nextWord);
         speakWordAndExample(nextWord.word, nextWord.example_sentence);
       } else {
-        const nextInList = updatedListWords.find(w => w.id !== currentWord.id);
-        if (nextInList) {
-          setCurrentWord(nextInList);
-          speakWordAndExample(nextInList.word, nextInList.example_sentence);
-        } else {
-          setCurrentWord(autoMastered ? null : updatedWord);
-        }
+        // All due reviews finished or all words completed! Show completion celebration!
+        setCurrentWord(null);
       }
 
       setIsTransitioning(false);
@@ -1850,14 +1864,15 @@ export default function App() {
   const lastCompletedRef = React.useRef<string | null>(null);
 
   useEffect(() => {
-    const completionKey = `${activeList}-${progress}`;
+    const completionKey = `${activeList}-${progress}-${isEbbinghausMode}`;
     if (!currentWord && filteredWords.length > 0 && progress === 100 && lastCompletedRef.current !== completionKey) {
       triggerFireworks();
+      playChimeArpeggio();
       lastCompletedRef.current = completionKey;
-    } else if (currentWord) {
+    } else if (currentWord && progress < 100) {
       lastCompletedRef.current = null;
     }
-  }, [currentWord, filteredWords.length, progress, triggerFireworks, activeList]);
+  }, [currentWord, filteredWords.length, progress, triggerFireworks, activeList, isEbbinghausMode]);
 
   const handleExport = () => {
     if (words.length === 0) {
@@ -2589,21 +2604,19 @@ export default function App() {
             >
               {/* Main Word */}
               <div className="relative inline-block mb-6 min-w-[200px]">
-                {history.length > 0 && (
+                {(history.length > 0 || (isAutoPlaying && currentModeWords.length > 1)) && previousWord && (
                   <div className="absolute top-1/2 -translate-y-1/2 right-full mr-4 sm:mr-8 md:mr-12 flex items-center select-none z-20 group/prev pointer-events-auto">
-                    {previousWord && (
-                      <span
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleBack();
-                        }}
-                        className="mr-1.5 text-xs font-mono text-zinc-500 group-hover/prev:text-emerald-400 transition-all cursor-pointer whitespace-nowrap max-w-[90px] sm:max-w-[130px] truncate select-none"
-                        title="上一个单词"
-                      >
-                        {previousWord.word}
-                      </span>
-                    )}
+                    <span
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleBack();
+                      }}
+                      className="mr-1.5 text-xs font-mono text-zinc-500 group-hover/prev:text-emerald-400 transition-all cursor-pointer whitespace-nowrap max-w-[90px] sm:max-w-[130px] truncate select-none"
+                      title="上一个单词"
+                    >
+                      {previousWord.word}
+                    </span>
                     <button
                       type="button"
                       onClick={(e) => {
@@ -3462,9 +3475,11 @@ export default function App() {
                     <p className="text-2xl text-zinc-300 font-medium mb-2">
                       {gameWords[currentGameIdx]?.meaning}
                     </p>
-                    <p className="text-zinc-500 font-mono italic">
-                      {gameWords[currentGameIdx]?.part_of_speech}
-                    </p>
+                    {gameWords[currentGameIdx]?.part_of_speech && (
+                      <p className="text-lg font-mono italic font-semibold text-yellow-300 tracking-wide">
+                        {gameWords[currentGameIdx]?.part_of_speech}
+                      </p>
+                    )}
                   </div>
                 </>
               )}

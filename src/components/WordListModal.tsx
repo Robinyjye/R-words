@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, Volume2, Search, ArrowRight, BookOpen, Undo2, CheckCircle2, Eye, EyeOff, Layers, Database } from 'lucide-react';
+import { X, Volume2, ArrowRight, BookOpen, Undo2, CheckCircle2, Eye, EyeOff, Layers, Database, Clock, RotateCcw } from 'lucide-react';
 import { WordState } from '../utils/word';
 import { speakWord, speakWordAndExample } from '../utils/audio';
 
@@ -27,7 +27,6 @@ export const WordListModal: React.FC<WordListModalProps> = ({
     return activeList === 'Mastered Words' ? 'mastered' : 'current';
   });
 
-  const [search, setSearch] = useState('');
   // User explicitly asked: "但不要显示词义", default is false!
   const [showMeanings, setShowMeanings] = useState(false);
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
@@ -83,15 +82,52 @@ export const WordListModal: React.FC<WordListModalProps> = ({
     }
   }, [activeTab, masteredScope, allMasteredWords, currentListMasteredWords, allWords, currentListWords]);
 
-  // Filtered by search
+  // Words displayed in current tab (search bar removed to maximize vertical word list space)
   const displayedWords = useMemo(() => {
-    if (!search.trim()) return tabWords;
-    const q = search.trim().toLowerCase();
-    return tabWords.filter(w =>
-      w.word.toLowerCase().includes(q) ||
-      (showMeanings && w.meaning && w.meaning.toLowerCase().includes(q))
-    );
-  }, [tabWords, search, showMeanings]);
+    return tabWords;
+  }, [tabWords]);
+
+  // Ebbinghaus statistics for the current tab list (Image 2)
+  const ebbinghausStats = useMemo(() => {
+    const total = tabWords.length;
+    let stage0 = 0;
+    let stageShort = 0; // Stage 1 ~ 3
+    let stageMedium = 0; // Stage 4 ~ 6
+    let stageLong = 0; // Stage 7 ~ 9
+
+    tabWords.forEach(w => {
+      const stage = w.ebbinghaus_stage || 0;
+      if (stage === 0) {
+        stage0++;
+      } else if (stage >= 1 && stage <= 3) {
+        stageShort++;
+      } else if (stage >= 4 && stage <= 6) {
+        stageMedium++;
+      } else {
+        stageLong++;
+      }
+    });
+
+    return {
+      total,
+      stage0: {
+        count: stage0,
+        percentage: total > 0 ? Math.round((stage0 / total) * 100) : 0,
+      },
+      stageShort: {
+        count: stageShort,
+        percentage: total > 0 ? Math.round((stageShort / total) * 100) : 0,
+      },
+      stageMedium: {
+        count: stageMedium,
+        percentage: total > 0 ? Math.round((stageMedium / total) * 100) : 0,
+      },
+      stageLong: {
+        count: stageLong,
+        percentage: total > 0 ? Math.round((stageLong / total) * 100) : 0,
+      },
+    };
+  }, [tabWords]);
 
   if (!isOpen) return null;
 
@@ -110,11 +146,11 @@ export const WordListModal: React.FC<WordListModalProps> = ({
       onClick={onClose}
     >
       <div 
-        className="bg-zinc-950 border border-zinc-800 rounded-3xl w-full max-w-3xl max-h-[88vh] flex flex-col shadow-2xl overflow-hidden relative"
+        className="bg-zinc-950 border border-zinc-800 rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden relative"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-5 sm:p-6 border-b border-zinc-800/80 bg-zinc-900/40 flex flex-col gap-4">
+        <div className="px-5 py-3 sm:px-6 sm:py-3.5 border-b border-zinc-800/80 bg-zinc-900/40 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
@@ -147,7 +183,7 @@ export const WordListModal: React.FC<WordListModalProps> = ({
             <div className="flex items-center space-x-1.5 bg-zinc-900/90 p-1 rounded-2xl border border-zinc-800/80 text-xs font-medium">
               <button
                 type="button"
-                onClick={() => { setActiveTab('current'); setSearch(''); }}
+                onClick={() => setActiveTab('current')}
                 className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
                   activeTab === 'current'
                     ? 'bg-zinc-800 text-white font-bold shadow-sm'
@@ -162,7 +198,7 @@ export const WordListModal: React.FC<WordListModalProps> = ({
 
               <button
                 type="button"
-                onClick={() => { setActiveTab('mastered'); setSearch(''); setMasteredScope('current'); }}
+                onClick={() => { setActiveTab('mastered'); setMasteredScope('current'); }}
                 className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
                   activeTab === 'mastered'
                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold shadow-sm'
@@ -179,7 +215,7 @@ export const WordListModal: React.FC<WordListModalProps> = ({
 
               <button
                 type="button"
-                onClick={() => { setActiveTab('all'); setSearch(''); }}
+                onClick={() => setActiveTab('all')}
                 className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
                   activeTab === 'all'
                     ? 'bg-zinc-800 text-white font-bold shadow-sm'
@@ -211,71 +247,107 @@ export const WordListModal: React.FC<WordListModalProps> = ({
           </div>
         </div>
 
-        {/* Search bar & scope filter inside modal */}
-        <div className="px-5 sm:px-6 py-2.5 border-b border-zinc-900 bg-zinc-950/60 space-y-2">
-          {activeTab === 'mastered' && activeList !== 'Mastered Words' && allMasteredWords.length > 0 && (
-            <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
-              <div className="flex items-center gap-1 bg-zinc-900/90 p-0.5 rounded-xl border border-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => setMasteredScope('current')}
-                  className={`px-2.5 py-1 rounded-lg transition-colors ${
-                    masteredScope === 'current'
-                      ? 'bg-zinc-800 text-emerald-400 font-bold shadow-sm'
-                      : 'text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  从「{activeList}」转移已掌握 ({currentListMasteredWords.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMasteredScope('all')}
-                  className={`px-2.5 py-1 rounded-lg transition-colors ${
-                    masteredScope === 'all'
-                      ? 'bg-zinc-800 text-white font-bold shadow-sm'
-                      : 'text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  全库所有已掌握 ({allMasteredWords.length})
-                </button>
+        {/* Minimized Ebbinghaus Stage Summary */}
+        <div className="px-4 sm:px-6 py-2 bg-zinc-950/80 border-b border-zinc-900/80">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            {/* Card 1: 初始新词 */}
+            <div className="bg-zinc-900/60 border border-zinc-800/80 px-2.5 py-1.5 rounded-xl flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 shrink-0" />
+                <span className="font-semibold text-zinc-300 truncate text-[11px]">初始新词</span>
+                <span className="font-mono text-[10px] text-zinc-500 hidden md:inline">S0</span>
               </div>
-              <span className="text-[11px] text-zinc-500 font-sans">
-                {masteredScope === 'current' ? `当前仅查看从「${activeList}」转移的单词` : '正在查看全库所有已掌握单词'}
-              </span>
+              <div className="flex items-center gap-1.5 shrink-0 font-mono">
+                <span className="font-bold text-white text-xs">{ebbinghausStats.stage0.count}</span>
+                <span className="text-[10px] text-zinc-500 font-normal">({ebbinghausStats.stage0.percentage}%)</span>
+              </div>
             </div>
-          )}
 
-          <div className="relative">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={`在 ${
-                activeTab === 'mastered'
-                  ? (masteredScope === 'current' ? `从 ${activeList} 转移的已掌握单词` : '全库已掌握单词')
-                  : activeTab === 'all'
-                    ? '全部词库'
-                    : activeList
-              } 中快速筛选...`}
-              className="w-full bg-zinc-900/80 border border-zinc-800 rounded-xl pl-10 pr-4 py-2 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50"
-            />
+            {/* Card 2: 短期强化 */}
+            <div className="bg-zinc-900/60 border border-amber-500/20 px-2.5 py-1.5 rounded-xl flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                <span className="font-semibold text-amber-300 truncate text-[11px]">短期强化</span>
+                <span className="font-mono text-[10px] text-amber-400/70 hidden md:inline">S1-3</span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0 font-mono">
+                <span className="font-bold text-white text-xs">{ebbinghausStats.stageShort.count}</span>
+                <span className="text-[10px] text-amber-400/80 font-normal">({ebbinghausStats.stageShort.percentage}%)</span>
+              </div>
+            </div>
+
+            {/* Card 3: 中期巩固 */}
+            <div className="bg-zinc-900/60 border border-cyan-500/20 px-2.5 py-1.5 rounded-xl flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
+                <span className="font-semibold text-cyan-300 truncate text-[11px]">中期巩固</span>
+                <span className="font-mono text-[10px] text-cyan-400/70 hidden md:inline">S4-6</span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0 font-mono">
+                <span className="font-bold text-white text-xs">{ebbinghausStats.stageMedium.count}</span>
+                <span className="text-[10px] text-cyan-400/80 font-normal">({ebbinghausStats.stageMedium.percentage}%)</span>
+              </div>
+            </div>
+
+            {/* Card 4: 长期稳固 */}
+            <div className="bg-zinc-900/60 border border-indigo-500/20 px-2.5 py-1.5 rounded-xl flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
+                <span className="font-semibold text-indigo-300 truncate text-[11px]">长期稳固</span>
+                <span className="font-mono text-[10px] text-indigo-400/70 hidden md:inline">S7-9</span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0 font-mono">
+                <span className="font-bold text-white text-xs">{ebbinghausStats.stageLong.count}</span>
+                <span className="text-[10px] text-indigo-400/80 font-normal">({ebbinghausStats.stageLong.percentage}%)</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Word List Content */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-2.5 divide-y divide-zinc-900/60">
+        {/* Mastered scope filter inside modal (only shown when on mastered tab) */}
+        {activeTab === 'mastered' && activeList !== 'Mastered Words' && allMasteredWords.length > 0 && (
+          <div className="px-4 sm:px-6 py-2 border-b border-zinc-900 bg-zinc-950/60 flex items-center justify-between gap-2 flex-wrap text-xs">
+            <div className="flex items-center gap-1 bg-zinc-900/90 p-0.5 rounded-xl border border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setMasteredScope('current')}
+                className={`px-2.5 py-1 rounded-lg transition-colors ${
+                  masteredScope === 'current'
+                    ? 'bg-zinc-800 text-emerald-400 font-bold shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                从「{activeList}」转移已掌握 ({currentListMasteredWords.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setMasteredScope('all')}
+                className={`px-2.5 py-1 rounded-lg transition-colors ${
+                  masteredScope === 'all'
+                    ? 'bg-zinc-800 text-white font-bold shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                全库所有已掌握 ({allMasteredWords.length})
+              </button>
+            </div>
+            <span className="text-[11px] text-zinc-500 font-sans">
+              {masteredScope === 'current' ? `当前仅查看从「${activeList}」转移的单词` : '正在查看全库所有已掌握单词'}
+            </span>
+          </div>
+        )}
+
+        {/* Word List Content - Compact padding to display as many words as possible */}
+        <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-2 divide-y divide-zinc-900/60">
           {displayedWords.length === 0 ? (
             <div className="text-center py-16 px-4 space-y-3">
               <div className="w-14 h-14 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto text-zinc-500">
                 <BookOpen size={24} />
               </div>
               <h4 className="text-sm font-semibold text-zinc-300">
-                {search 
-                  ? '未搜索到符合条件的单词' 
-                  : activeTab === 'mastered' 
-                    ? (masteredScope === 'current' ? `当前列表「${activeList}」暂无已转移掌握的单词` : '暂无已掌握单词') 
-                    : '该列表中暂无单词'}
+                {activeTab === 'mastered' 
+                  ? (masteredScope === 'current' ? `当前列表「${activeList}」暂无已转移掌握的单词` : '暂无已掌握单词') 
+                  : '该列表中暂无单词'}
               </h4>
               <p className="text-xs text-zinc-500 max-w-sm mx-auto">
                 {activeTab === 'mastered'
@@ -333,6 +405,26 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                       >
                         <Volume2 size={14} />
                       </button>
+
+                      {/* Practice count badge (练习次数) */}
+                      <span
+                        className={`inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full border transition-colors ${
+                          (item.review_count || 0) > 0
+                            ? 'bg-amber-500/10 text-amber-300 border-amber-500/25 font-semibold'
+                            : 'bg-zinc-800/60 text-zinc-500 border-zinc-700/40'
+                        }`}
+                        title={`该单词已累计练习 ${item.review_count || 0} 次`}
+                      >
+                        <Clock size={10} className={(item.review_count || 0) > 0 ? 'text-amber-400' : 'text-zinc-500'} />
+                        <span>练习 {item.review_count || 0} 次</span>
+                      </span>
+
+                      {/* Ebbinghaus stage badge */}
+                      {item.ebbinghaus_stage !== undefined && item.ebbinghaus_stage > 0 && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-zinc-800/70 text-zinc-300 border border-zinc-700/50">
+                          Stage {item.ebbinghaus_stage}
+                        </span>
+                      )}
 
                       {/* Mastered status badge */}
                       {isMastered && (
