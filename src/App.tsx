@@ -201,12 +201,16 @@ export default function App() {
   const [hasError, setHasError] = useState(false);
   const [isHinted, setIsHinted] = useState(false);
   const [showDictationRoot, setShowDictationRoot] = useState(false);
+  const [peekedHintThisWord, setPeekedHintThisWord] = useState(false);
+  const [peekedRootThisWord, setPeekedRootThisWord] = useState(false);
   const [sessionErrors, setSessionErrors] = useState<Set<string>>(new Set());
   
   useEffect(() => {
     setHasError(false);
     setIsHinted(false);
     setShowDictationRoot(false);
+    setPeekedHintThisWord(false);
+    setPeekedRootThisWord(false);
   }, [currentWord?.id]);
   
   useEffect(() => {
@@ -533,6 +537,8 @@ export default function App() {
     setHasError(false);
     setIsHinted(false);
     setShowDictationRoot(false);
+    setPeekedHintThisWord(false);
+    setPeekedRootThisWord(false);
 
     // If this word is already actively playing, do not restart its audio sequence
     if (currentPlayingWordIdRef.current === targetWord.id) {
@@ -1443,8 +1449,69 @@ export default function App() {
     setIsViewingHistory(false);
     setHasError(false);
     setIsHinted(false);
+    setShowDictationRoot(false);
+    setPeekedHintThisWord(false);
+    setPeekedRootThisWord(false);
     speakWordAndExample(nextTarget.word, nextTarget.example_sentence);
   }, [currentWord, currentModeWords, upcomingWord, showToast]);
+
+  const handleDictationPeekHint = useCallback(() => {
+    if (!currentWord || !isDictationMode) return;
+
+    if (!isHinted) {
+      speakWordAndExample(currentWord.word, currentWord.example_sentence);
+      setIsHinted(true);
+
+      if (!peekedHintThisWord) {
+        setPeekedHintThisWord(true);
+        const currentStreak = currentWord.dictation_correct_streak || 0;
+        const newStreak = Math.max(0, currentStreak - 1);
+
+        const updatedWord: WordState = {
+          ...currentWord,
+          dictation_correct_streak: newStreak,
+        };
+        setCurrentWord(updatedWord);
+        setWords(prev => {
+          const next = prev.map(w => w.id === currentWord.id ? updatedWord : w);
+          saveWords(next);
+          return next;
+        });
+        showToast(`👀 已查看提示：连续正确次数 -1（当前 ${newStreak}/5）`);
+      }
+    } else {
+      setIsHinted(false);
+    }
+  }, [currentWord, isDictationMode, isHinted, peekedHintThisWord, showToast]);
+
+  const handleDictationPeekRoot = useCallback(() => {
+    if (!currentWord || !isDictationMode) return;
+    const hasRootInfo = !!(currentWord.prefix || currentWord.root_core || currentWord.suffix);
+    if (!hasRootInfo) {
+      showToast(`"${currentWord.word}" 暂无词根数据`);
+      return;
+    }
+
+    setShowDictationRoot(prev => !prev);
+
+    if (!peekedRootThisWord) {
+      setPeekedRootThisWord(true);
+      const currentStreak = currentWord.dictation_correct_streak || 0;
+      const newStreak = Math.max(0, currentStreak - 1);
+
+      const updatedWord: WordState = {
+        ...currentWord,
+        dictation_correct_streak: newStreak,
+      };
+      setCurrentWord(updatedWord);
+      setWords(prev => {
+        const next = prev.map(w => w.id === currentWord.id ? updatedWord : w);
+        saveWords(next);
+        return next;
+      });
+      showToast(`🌱 已查看词根：连续正确次数 -1（当前 ${newStreak}/5）`);
+    }
+  }, [currentWord, isDictationMode, peekedRootThisWord, showToast]);
 
   // Handle keyboard input
   useEffect(() => {
@@ -1504,12 +1571,7 @@ export default function App() {
         if (targetWord[input.length] !== ' ') {
           e.preventDefault();
           if (isDictationMode) {
-            const hasRootInfo = !!(currentWord.prefix || currentWord.root_core || currentWord.suffix);
-            if (!hasRootInfo) {
-              showToast(`"${currentWord.word}" 暂无词根数据`);
-            } else {
-              setShowDictationRoot(prev => !prev);
-            }
+            handleDictationPeekRoot();
             return;
           }
           if (currentWord.phrase) {
@@ -1566,7 +1628,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip, isGameMode]);
+  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip, isGameMode, handleDictationPeekRoot]);
 
   // Check for completion
   useEffect(() => {
@@ -1585,9 +1647,9 @@ export default function App() {
 
     // Update word state
     const now = Date.now();
-    const isErrorThisTime = isDictationMode && (hasError || isHinted);
+    const isAssistedOrError = isDictationMode && (hasError || isHinted || showDictationRoot || peekedHintThisWord || peekedRootThisWord);
     
-    if (isErrorThisTime) {
+    if (isAssistedOrError) {
       setSessionErrors(prev => new Set(prev).add(currentWord.id));
     } else {
       // If completed successfully without error/hint, remove from session errors
@@ -1606,11 +1668,17 @@ export default function App() {
     let autoMastered = false;
 
     if (isDictationMode) {
-      if (isErrorThisTime) {
+      if (hasError) {
+        // Explicit spelling error: streak broken and reset to 0
         dictationStreak = 0;
+      } else if (peekedHintThisWord || peekedRootThisWord || isHinted || showDictationRoot) {
+        // Assisted by hint or root: already decremented by 1 when peeked;
+        // this assisted completion does not add a new streak point.
+        dictationStreak = currentWord.dictation_correct_streak || 0;
       } else {
+        // Pure unassisted correct spelling!
         dictationStreak += 1;
-        if (!currentWord.is_mastered && dictationStreak >= 3) {
+        if (!currentWord.is_mastered && dictationStreak >= 5) {
           autoMastered = true;
         }
       }
@@ -1618,13 +1686,13 @@ export default function App() {
 
     // If we are in review phase (all completed), and this was successful without error/hint, clear has_error
     const allOthersCompleted = filteredWords.every(w => w.id === currentWord.id || (isDictationMode ? w.is_completed_dictation : w.is_completed_normal));
-    const shouldClearError = allOthersCompleted && !isErrorThisTime;
+    const shouldClearError = allOthersCompleted && !isAssistedOrError;
 
     const updatedWord: WordState = {
       ...currentWord,
-      review_count: isErrorThisTime ? currentWord.review_count : currentWord.review_count + 1,
+      review_count: isAssistedOrError ? currentWord.review_count : currentWord.review_count + 1,
       last_review_time: now,
-      has_error: shouldClearError ? false : (isErrorThisTime || currentWord.has_error),
+      has_error: shouldClearError ? false : (isAssistedOrError || currentWord.has_error),
       is_completed_normal: isDictationMode ? currentWord.is_completed_normal : true,
       is_completed_dictation: isDictationMode ? true : currentWord.is_completed_dictation,
       dictation_correct_streak: isDictationMode ? dictationStreak : currentWord.dictation_correct_streak,
@@ -1633,7 +1701,7 @@ export default function App() {
         ? ((currentWord.listName && currentWord.listName !== 'Mastered Words') ? currentWord.listName : (currentWord.previousListName || 'Default List'))
         : currentWord.previousListName,
       listName: autoMastered ? 'Mastered Words' : currentWord.listName,
-      ebbinghaus_stage: isErrorThisTime 
+      ebbinghaus_stage: isAssistedOrError 
         ? Math.max(0, (currentWord.ebbinghaus_stage || 0) - 1) 
         : Math.min(9, (currentWord.ebbinghaus_stage || 0) + 1),
     };
@@ -1648,7 +1716,7 @@ export default function App() {
         spread: 70,
         origin: { y: 0.6 }
       });
-      showToast(`🎉 "${currentWord.word}" 听写连续拼写正确 3 次，已自动标记为「已掌握」！`);
+      showToast(`🎉 "${currentWord.word}" 听写连续拼写正确 5 次，已自动标记为「已掌握」！`);
     }
 
     // Update stats
@@ -1698,8 +1766,11 @@ export default function App() {
       setIsViewingHistory(false);
       setHasError(false);
       setIsHinted(false);
+      setShowDictationRoot(false);
+      setPeekedHintThisWord(false);
+      setPeekedRootThisWord(false);
     }, 500);
-  }, [currentWord, words, isDictationMode, hasError, isHinted, filteredWords, showToast]);
+  }, [currentWord, words, isDictationMode, hasError, isHinted, showDictationRoot, peekedHintThisWord, peekedRootThisWord, filteredWords, showToast, activeList, isEbbinghausMode]);
 
   const handleRemoveDuplicates = () => {
     if (words.length === 0) return;
@@ -2675,13 +2746,9 @@ export default function App() {
                       className="absolute flex justify-center items-center cursor-pointer text-emerald-500 hover:text-emerald-400 transition-colors z-10"
                       onClick={(e) => {
                         e.preventDefault();
-                        if (!isHinted) {
-                          setHasError(true);
-                          speakWordAndExample(currentWord.word, currentWord.example_sentence);
-                        }
-                        setIsHinted(!isHinted);
+                        handleDictationPeekHint();
                       }}
-                      title={isHinted ? "Click to hide word" : "Click to reveal word & listen"}
+                      title={isHinted ? "点击隐藏提示" : "点击查看提示（连对次数将 -1）"}
                     >
                       <Headphones size={64} />
                     </motion.div>
@@ -2714,13 +2781,13 @@ export default function App() {
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        setShowDictationRoot(true);
+                        handleDictationPeekRoot();
                       }}
                       className="font-mono text-zinc-500 hover:text-zinc-300 text-xs inline-flex items-center gap-1.5 py-1 px-3 bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700 rounded-full transition-all cursor-pointer group shadow-sm select-none"
-                      title="听写防剧透，点击偷看词根提示"
+                      title="听写防剧透，点击偷看词根提示（连对次数将 -1）"
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-indigo-500/60 group-hover:bg-indigo-400 transition-colors" />
-                      <span>词根已遮挡 · 点击偷看</span>
+                      <span>词根已遮挡 · 点击偷看 (-1)</span>
                     </button>
                   </div>
                 ) : (
@@ -2832,7 +2899,7 @@ export default function App() {
                   )}
                   {isDictationMode && (
                     <span className="text-xs font-sans text-amber-400/90 bg-amber-400/10 px-2.5 py-0.5 rounded-full font-medium">
-                      听写连对: {currentWord.dictation_correct_streak || 0} / 3
+                      听写连对: {currentWord.dictation_correct_streak || 0} / 5
                     </span>
                   )}
                   {currentWord.phonetic && (
@@ -3386,13 +3453,15 @@ export default function App() {
                       )}
                     </AnimatePresence>
 
-                    <div className="text-4xl md:text-6xl font-bold tracking-widest text-white flex justify-center flex-wrap gap-x-2">
+                    <div className="text-4xl md:text-6xl font-bold tracking-widest text-white flex justify-center items-end flex-wrap gap-x-2">
                       {(() => {
                         const currentGameWord = gameWords[currentGameIdx];
+                        if (!currentGameWord) return null;
+
                         const wordCharColors = getWordCharColors(currentGameWord);
                         const textOpacity = gameStatus === 'correct' ? 'opacity-80' : 'opacity-60';
 
-                        return currentGameWord?.word.split('').map((char, i) => {
+                        const renderChar = (char: string, i: number) => {
                           const origColor = wordCharColors[i] || 'text-white';
                           const isBlank = gameBlanks.includes(i);
 
@@ -3444,7 +3513,62 @@ export default function App() {
                               {char}
                             </span>
                           );
-                        });
+                        };
+
+                        const word = currentGameWord.word;
+                        const p = (currentGameWord.prefix || '').replace(/[^a-zA-Z]/g, '').toLowerCase();
+                        const r = (currentGameWord.root_core || '').replace(/[^a-zA-Z]/g, '').toLowerCase();
+                        const lowerWord = word.toLowerCase();
+
+                        let rootStart = -1;
+                        let rootEnd = -1;
+                        if (r) {
+                          let startSearch = 0;
+                          if (p && lowerWord.startsWith(p)) startSearch = p.length;
+                          let idx = lowerWord.indexOf(r, startSearch);
+                          if (idx === -1) idx = lowerWord.indexOf(r);
+                          if (idx !== -1) {
+                            rootStart = idx;
+                            rootEnd = idx + r.length;
+                          }
+                        }
+
+                        // Fallback to emerald indices if r wasn't directly found by exact substring
+                        if (rootStart === -1) {
+                          const emeraldIndices = wordCharColors.map((c, i) => c === 'text-emerald-400' ? i : -1).filter(i => i !== -1);
+                          if (emeraldIndices.length > 0) {
+                            rootStart = emeraldIndices[0];
+                            rootEnd = emeraldIndices[emeraldIndices.length - 1] + 1;
+                          }
+                        }
+
+                        const hasRoot = rootStart !== -1 && rootEnd > rootStart;
+                        const hasRootMeaning = !!currentGameWord.root_meaning;
+
+                        if (!hasRoot) {
+                          return word.split('').map((char, i) => renderChar(char, i));
+                        }
+
+                        const beforeChars = word.slice(0, rootStart).split('').map((char, idx) => renderChar(char, idx));
+                        const rootChars = word.slice(rootStart, rootEnd).split('').map((char, idx) => renderChar(char, rootStart + idx));
+                        const afterChars = word.slice(rootEnd).split('').map((char, idx) => renderChar(char, rootEnd + idx));
+
+                        return (
+                          <>
+                            {beforeChars}
+                            <div className="relative inline-flex flex-col items-center">
+                              <div className="inline-flex items-end gap-x-2">
+                                {rootChars}
+                              </div>
+                              {hasRootMeaning && (
+                                <div className="absolute top-full mt-5 md:mt-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-sm md:text-base font-medium tracking-normal text-emerald-400 opacity-60 pointer-events-none select-none">
+                                  {currentGameWord.root_meaning}
+                                </div>
+                              )}
+                            </div>
+                            {afterChars}
+                          </>
+                        );
                       })()}
                     </div>
                   </div>

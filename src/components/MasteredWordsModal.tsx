@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, CheckCircle2, Volume2, Search, ArrowRight, BookOpen } from 'lucide-react';
-import { WordState } from '../utils/word';
+import { WordState, getPartOfSpeechBadgeClass } from '../utils/word';
 
 interface MasteredWordsModalProps {
   isOpen: boolean;
@@ -116,7 +116,7 @@ export const MasteredWordsModal: React.FC<MasteredWordsModalProps> = ({
                         {item.word}
                       </span>
                       {item.part_of_speech && (
-                        <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">
+                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded-full border font-semibold ${getPartOfSpeechBadgeClass(item.part_of_speech)}`}>
                           {item.part_of_speech}
                         </span>
                       )}

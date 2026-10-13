@@ -28,3 +28,21 @@ export interface WordState extends WordData {
   peek_penalty?: boolean;
   dictation_correct_streak?: number;
 }
+
+export const getPartOfSpeechBadgeClass = (pos?: string): string => {
+  if (!pos) return 'bg-sky-500/20 text-sky-300 border-sky-500/35';
+  const p = pos.trim().toLowerCase();
+  if (p.startsWith('v') || p.includes('动词')) {
+    return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35';
+  }
+  if (p.startsWith('n') || p.includes('名词')) {
+    return 'bg-sky-500/20 text-sky-300 border-sky-500/35';
+  }
+  if (p.startsWith('adj') || p.includes('形容词')) {
+    return 'bg-amber-500/20 text-amber-300 border-amber-500/35';
+  }
+  if (p.startsWith('adv') || p.includes('副词')) {
+    return 'bg-purple-500/20 text-purple-300 border-purple-500/35';
+  }
+  return 'bg-cyan-500/20 text-cyan-300 border-cyan-500/35';
+};

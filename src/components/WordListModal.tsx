@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Volume2, ArrowRight, BookOpen, Undo2, CheckCircle2, Eye, EyeOff, Layers, Database, Clock, RotateCcw } from 'lucide-react';
-import { WordState } from '../utils/word';
+import { WordState, getPartOfSpeechBadgeClass } from '../utils/word';
 import { speakWord, speakWordAndExample } from '../utils/audio';
 
 interface WordListModalProps {
@@ -388,7 +388,7 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                       )}
 
                       {item.part_of_speech && (
-                        <span className="text-[11px] font-mono px-1.5 py-0.5 rounded-md bg-zinc-800/80 text-zinc-400">
+                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md border font-semibold ${getPartOfSpeechBadgeClass(item.part_of_speech)}`}>
                           {item.part_of_speech}
                         </span>
                       )}
