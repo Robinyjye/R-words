@@ -3561,7 +3561,7 @@ export default function App() {
                                 {rootChars}
                               </div>
                               {hasRootMeaning && (
-                                <div className="absolute top-full mt-5 md:mt-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-sm md:text-base font-medium tracking-normal text-emerald-400 opacity-60 pointer-events-none select-none">
+                                <div className="absolute top-full mt-1.5 md:mt-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-sm md:text-base font-medium tracking-normal text-emerald-400 opacity-60 pointer-events-none select-none">
                                   {currentGameWord.root_meaning}
                                 </div>
                               )}

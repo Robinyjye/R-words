@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, Volume2, ArrowRight, BookOpen, Undo2, CheckCircle2, Eye, EyeOff, Layers, Database, Clock, RotateCcw } from 'lucide-react';
+import { X, Volume2, ArrowRight, BookOpen, Undo2, CheckCircle2, Eye, EyeOff, Layers, Database, Clock, RotateCcw, Search } from 'lucide-react';
 import { WordState, getPartOfSpeechBadgeClass } from '../utils/word';
 import { speakWord, speakWordAndExample } from '../utils/audio';
 
@@ -22,8 +22,8 @@ export const WordListModal: React.FC<WordListModalProps> = ({
   onSelectWord,
   onReturnWord,
 }) => {
-  // Tabs: 'current' | 'mastered' | 'all'
-  const [activeTab, setActiveTab] = useState<'current' | 'mastered' | 'all'>(() => {
+  // Tabs: 'current' | 'mastered'
+  const [activeTab, setActiveTab] = useState<'current' | 'mastered'>(() => {
     return activeList === 'Mastered Words' ? 'mastered' : 'current';
   });
 
@@ -31,12 +31,25 @@ export const WordListModal: React.FC<WordListModalProps> = ({
   const [showMeanings, setShowMeanings] = useState(false);
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
 
+  // Search input query
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Hide word mode (看中忆英)
+  const [hideWord, setHideWord] = useState(false);
+  const [revealedWordIds, setRevealedWordIds] = useState<Set<string>>(new Set());
+
   // Reset tab when activeList changes
   useEffect(() => {
     if (activeList === 'Mastered Words') {
       setActiveTab('mastered');
     }
   }, [activeList]);
+
+  // Reset revealed states on tab switch
+  useEffect(() => {
+    setRevealedIds(new Set());
+    setRevealedWordIds(new Set());
+  }, [activeTab]);
 
   // Handle ESC key to close
   useEffect(() => {
@@ -82,10 +95,30 @@ export const WordListModal: React.FC<WordListModalProps> = ({
     }
   }, [activeTab, masteredScope, allMasteredWords, currentListMasteredWords, allWords, currentListWords]);
 
-  // Words displayed in current tab (search bar removed to maximize vertical word list space)
+  // Words displayed in current tab, filtered by search query
   const displayedWords = useMemo(() => {
-    return tabWords;
-  }, [tabWords]);
+    if (!searchQuery.trim()) {
+      return tabWords;
+    }
+    const q = searchQuery.trim().toLowerCase();
+    return tabWords.filter(w => {
+      const matchWord = w.word.toLowerCase().includes(q);
+      const matchMeaning = !!(w.meaning && w.meaning.toLowerCase().includes(q));
+      const matchRoot = !!(w.root_core && w.root_core.toLowerCase().includes(q));
+      return matchWord || matchMeaning || matchRoot;
+    });
+  }, [tabWords, searchQuery]);
+
+  // Map of root_core -> root_meaning across all words for comprehensive lookups
+  const rootMeaningsMap = useMemo(() => {
+    const map = new Map<string, string>();
+    allWords.forEach(w => {
+      if (w.root_core && w.root_meaning) {
+        map.set(w.root_core.toLowerCase().trim(), w.root_meaning.trim());
+      }
+    });
+    return map;
+  }, [allWords]);
 
   // Ebbinghaus statistics for the current tab list (Image 2)
   const ebbinghausStats = useMemo(() => {
@@ -140,6 +173,15 @@ export const WordListModal: React.FC<WordListModalProps> = ({
     });
   };
 
+  const toggleRevealWord = (id: string) => {
+    setRevealedWordIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   return (
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
@@ -159,12 +201,18 @@ export const WordListModal: React.FC<WordListModalProps> = ({
               <div>
                 <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-center gap-2">
                   <span>单词列表速览</span>
-                  <span className="text-xs font-mono font-medium px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
-                    纯词自测模式
+                  <span className={`text-xs font-mono font-medium px-2 py-0.5 rounded-full border ${
+                    hideWord 
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                      : 'bg-zinc-800 text-zinc-300 border-zinc-700'
+                  }`}>
+                    {hideWord ? '看中忆英模式' : '纯词自测模式'}
                   </span>
                 </h3>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  默认隐藏词义，专为快速检验英文辨识与一键返回重练设计
+                  {hideWord 
+                    ? '已隐藏英文单词，通过看中文释义回想英文加强记忆'
+                    : '默认隐藏词义，专为快速检验英文辨识与一键返回重练设计'}
                 </p>
               </div>
             </div>
@@ -178,9 +226,10 @@ export const WordListModal: React.FC<WordListModalProps> = ({
             </button>
           </div>
 
-          {/* Navigation Tabs */}
-          <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-zinc-900">
-            <div className="flex items-center space-x-1.5 bg-zinc-900/90 p-1 rounded-2xl border border-zinc-800/80 text-xs font-medium">
+          {/* Navigation Tabs, Search Box, and Display Toggles */}
+          <div className="flex items-center justify-between flex-wrap gap-2.5 pt-1 border-t border-zinc-900">
+            {/* Tabs */}
+            <div className="flex items-center space-x-1.5 bg-zinc-900/90 p-1 rounded-2xl border border-zinc-800/80 text-xs font-medium shrink-0">
               <button
                 type="button"
                 onClick={() => setActiveTab('current')}
@@ -212,38 +261,72 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                   {currentListMasteredWords.length}
                 </span>
               </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('all')}
-                className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
-                  activeTab === 'all'
-                    ? 'bg-zinc-800 text-white font-bold shadow-sm'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                <Layers size={13} />
-                <span>全部词库</span>
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-zinc-950/60 text-zinc-300">
-                  {allWords.length}
-                </span>
-              </button>
             </div>
 
-            {/* Global Meaning Peek Toggle */}
-            <button
-              type="button"
-              onClick={() => setShowMeanings(!showMeanings)}
-              className={`px-3 py-1.5 rounded-xl border text-xs transition-colors flex items-center gap-1.5 ${
-                showMeanings
-                  ? 'border-indigo-500/50 bg-indigo-500/15 text-indigo-300'
-                  : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
-              }`}
-              title={showMeanings ? "点击隐藏所有词义" : "点击显示所有词义"}
-            >
-              {showMeanings ? <EyeOff size={13} /> : <Eye size={13} />}
-              <span>{showMeanings ? '已显释义' : '隐藏释义 (默认)'}</span>
-            </button>
+            {/* Search Box */}
+            <div className="relative flex-1 min-w-[140px] max-w-xs">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="在列表中查找单词..."
+                className="w-full pl-8 pr-7 py-1.5 bg-zinc-900/90 hover:bg-zinc-900 focus:bg-zinc-950 border border-zinc-800 focus:border-zinc-700 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none transition-colors"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 p-0.5 rounded-full"
+                  title="清除检索"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+
+            {/* Right Action Toggles */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Hide Words Toggle (看中忆英) */}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !hideWord;
+                  setHideWord(next);
+                  if (next) {
+                    setShowMeanings(true);
+                  }
+                  setRevealedWordIds(new Set());
+                }}
+                className={`px-3 py-1.5 rounded-xl border text-xs transition-colors flex items-center gap-1.5 ${
+                  hideWord
+                    ? 'border-amber-500/50 bg-amber-500/15 text-amber-300 font-bold'
+                    : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
+                }`}
+                title={hideWord ? "点击恢复显示英文单词" : "点击隐藏单词，看中文释义回想英文加强记忆"}
+              >
+                {hideWord ? <EyeOff size={13} className="text-amber-400" /> : <Eye size={13} />}
+                <span>{hideWord ? '已隐藏单词' : '隐藏单词'}</span>
+              </button>
+
+              {/* Global Meaning Peek Toggle */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (hideWord) setHideWord(false);
+                  setShowMeanings(!showMeanings);
+                }}
+                className={`px-3 py-1.5 rounded-xl border text-xs transition-colors flex items-center gap-1.5 ${
+                  showMeanings && !hideWord
+                    ? 'border-indigo-500/50 bg-indigo-500/15 text-indigo-300 font-semibold'
+                    : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
+                }`}
+                title={showMeanings ? "点击隐藏所有词义" : "点击显示所有词义"}
+              >
+                {showMeanings && !hideWord ? <EyeOff size={13} /> : <Eye size={13} />}
+                <span>{showMeanings && !hideWord ? '已显释义' : '隐藏释义 (默认)'}</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -342,19 +425,31 @@ export const WordListModal: React.FC<WordListModalProps> = ({
           {displayedWords.length === 0 ? (
             <div className="text-center py-16 px-4 space-y-3">
               <div className="w-14 h-14 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto text-zinc-500">
-                <BookOpen size={24} />
+                {searchQuery ? <Search size={24} /> : <BookOpen size={24} />}
               </div>
               <h4 className="text-sm font-semibold text-zinc-300">
-                {activeTab === 'mastered' 
-                  ? (masteredScope === 'current' ? `当前列表「${activeList}」暂无已转移掌握的单词` : '暂无已掌握单词') 
-                  : '该列表中暂无单词'}
+                {searchQuery
+                  ? `未找到与 "${searchQuery}" 匹配的单词`
+                  : (activeTab === 'mastered' 
+                      ? (masteredScope === 'current' ? `当前列表「${activeList}」暂无已转移掌握的单词` : '暂无已掌握单词') 
+                      : '该列表中暂无单词')}
               </h4>
               <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-                {activeTab === 'mastered'
-                  ? (masteredScope === 'current' 
-                      ? `当从「${activeList}」完成掌握时会显示在此处，可在此一键退回原列表重练。`
-                      : '在背词页面点击对勾图标，或在 Word Game 中连对 6 次，即可将单词标记为已掌握。')
-                  : '可通过导入数据或从其它列表中切换单词进行练习。'}
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="text-emerald-400 hover:underline cursor-pointer"
+                  >
+                    清除检索关键词
+                  </button>
+                ) : (
+                  activeTab === 'mastered'
+                    ? (masteredScope === 'current' 
+                        ? `当从「${activeList}」完成掌握时会显示在此处，可在此一键退回原列表重练。`
+                        : '在背词页面点击对勾图标，或在 Word Game 中连对 6 次，即可将单词标记为已掌握。')
+                    : '可通过导入数据或从其它列表中切换单词进行练习。'
+                )}
               </p>
             </div>
           ) : (
@@ -363,12 +458,15 @@ export const WordListModal: React.FC<WordListModalProps> = ({
               const targetOriginalList = (item.previousListName && item.previousListName !== 'Mastered Words')
                 ? item.previousListName
                 : 'Default List';
-              const isMeaningRevealed = showMeanings || revealedIds.has(item.id);
+              const isWordRevealed = !hideWord || revealedWordIds.has(item.id);
+              const isMeaningRevealed = hideWord ? true : (showMeanings || revealedIds.has(item.id));
+              const rootMeaning = item.root_meaning || (item.root_core ? rootMeaningsMap.get(item.root_core.toLowerCase().trim()) : '') || '';
 
               return (
                 <div
                   key={item.id}
-                  className="pt-2.5 first:pt-0 p-3.5 rounded-2xl bg-zinc-900/40 border border-zinc-850 hover:border-zinc-700/80 hover:bg-zinc-900/70 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
+                  onClick={() => speakWordAndExample(item.word, item.example_sentence)}
+                  className="pt-2.5 first:pt-0 p-3.5 rounded-2xl bg-zinc-900/40 border border-zinc-850 hover:border-zinc-700/80 hover:bg-zinc-900/80 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group cursor-pointer active:scale-[0.998]"
                 >
                   <div className="space-y-1.5 flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -376,12 +474,40 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                         #{index + 1}
                       </span>
 
-                      {/* Word Name */}
-                      <span className="text-base font-bold font-mono text-white group-hover:text-emerald-300 transition-colors tracking-wide">
-                        {item.word}
-                      </span>
+                      {/* Word Name (Hidden if hideWord is true and not revealed) */}
+                      {!isWordRevealed ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleRevealWord(item.id);
+                          }}
+                          className="px-2.5 py-0.5 rounded-lg bg-zinc-800/90 hover:bg-zinc-700 text-zinc-400 hover:text-amber-300 font-mono text-sm border border-zinc-700/60 transition-all flex items-center gap-1.5 cursor-pointer group shadow-inner"
+                        >
+                          <span className="tracking-widest select-none">••••••••</span>
+                          <span className="text-[10px] text-zinc-500 group-hover:text-amber-300 font-sans">偷看</span>
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-base font-bold font-mono text-white group-hover:text-emerald-300 transition-colors tracking-wide">
+                            {item.word}
+                          </span>
+                          {hideWord && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleRevealWord(item.id);
+                              }}
+                              className="text-[10px] text-zinc-500 hover:text-zinc-300 font-sans underline cursor-pointer"
+                            >
+                              遮挡
+                            </button>
+                          )}
+                        </div>
+                      )}
 
-                      {item.phonetic && (
+                      {item.phonetic && isWordRevealed && (
                         <span className="text-xs font-mono text-zinc-500">
                           {item.phonetic}
                         </span>
@@ -401,7 +527,6 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                           speakWordAndExample(item.word, item.example_sentence);
                         }}
                         className="p-1 text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors"
-                        title="朗读单词及例句"
                       >
                         <Volume2 size={14} />
                       </button>
@@ -413,7 +538,6 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                             ? 'bg-amber-500/10 text-amber-300 border-amber-500/25 font-semibold'
                             : 'bg-zinc-800/60 text-zinc-500 border-zinc-700/40'
                         }`}
-                        title={`该单词已累计练习 ${item.review_count || 0} 次`}
                       >
                         <Clock size={10} className={(item.review_count || 0) > 0 ? 'text-amber-400' : 'text-zinc-500'} />
                         <span>练习 {item.review_count || 0} 次</span>
@@ -434,11 +558,31 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                         </span>
                       )}
 
-                      {/* Affix / Root tags preview */}
-                      {item.root_core && (
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
-                          词根: {item.root_core}
-                        </span>
+                      {/* Affix / Root tags preview with hover meaning tooltip */}
+                      {item.root_core && isWordRevealed && (
+                        <div 
+                          className="relative group/root inline-flex items-center"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <span 
+                            className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 transition-all cursor-help flex items-center gap-1 select-none"
+                          >
+                            <span>词根: {item.root_core}</span>
+                          </span>
+
+                          {/* Floating Tooltip appearing at bottom-right (右下方) */}
+                          <div className="absolute top-full left-0 mt-1.5 hidden group-hover/root:flex flex-col items-start z-30 pointer-events-none animate-in fade-in duration-150">
+                            <div className="w-2 h-2 bg-zinc-900 border-l border-t border-indigo-500/40 rotate-45 ml-3 -mb-1 z-10" />
+                            <div className="bg-zinc-900/95 text-white border border-indigo-500/40 px-3 py-1.5 rounded-xl shadow-2xl text-xs whitespace-nowrap flex items-center gap-1.5 font-sans backdrop-blur-md">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
+                              <span className="font-mono font-bold text-indigo-300">{item.root_core}</span>
+                              <span className="text-zinc-500">:</span>
+                              <span className="font-medium text-zinc-100">
+                                {rootMeaning || '暂无释义'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
                       )}
 
                       {/* Target Original List tag */}
@@ -449,19 +593,19 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                       )}
                     </div>
 
-                    {/* Meaning (Hidden by default, can be toggled) */}
+                    {/* Meaning */}
                     {isMeaningRevealed ? (
                       <div className="space-y-1 pt-0.5 animate-in fade-in duration-150 text-left">
-                        <div className="text-xs text-zinc-300 font-medium text-left">
+                        <div className="text-xs text-zinc-200 font-medium text-left">
                           {item.meaning}
                         </div>
-                        {item.phrase && (
+                        {item.phrase && isWordRevealed && (
                           <div className="text-xs text-emerald-400/90 font-medium flex items-center gap-1.5 text-left">
                             <span className="text-[11px] text-zinc-500 font-sans font-normal shrink-0">搭配:</span>
                             <span>{item.phrase}</span>
                           </div>
                         )}
-                        {item.example_sentence && (
+                        {item.example_sentence && isWordRevealed && (
                           <div className="text-xs text-zinc-300 italic flex items-start gap-1.5 leading-relaxed text-left group/ex">
                             <span className="text-[11px] text-zinc-500 font-sans not-italic font-normal shrink-0">例句:</span>
                             <span className="flex-1 text-zinc-200">"{item.example_sentence}"</span>
@@ -472,7 +616,6 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                                 speakWord(item.example_sentence!);
                               }}
                               className="p-1 text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors shrink-0 -mt-0.5"
-                              title="朗读例句"
                             >
                               <Volume2 size={12} />
                             </button>
@@ -484,7 +627,10 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                         <span className="italic">词义与例句已隐藏</span>
                         <button
                           type="button"
-                          onClick={() => toggleRevealSingle(item.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleRevealSingle(item.id);
+                          }}
                           className="hover:text-zinc-300 text-zinc-600 underline text-[10px] ml-1 cursor-pointer"
                         >
                           点击偷看
@@ -504,7 +650,6 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                           onReturnWord(item);
                         }}
                         className="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 border border-amber-500/30 hover:border-amber-500/50 text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
-                        title={`一键原路退回至 "${targetOriginalList}" 列表重新练习`}
                       >
                         <Undo2 size={13} className="text-amber-400" />
                         <span>一键返回</span>
@@ -514,12 +659,12 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                     {/* 切换学习 */}
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         onSelectWord(item);
                         onClose();
                       }}
                       className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-emerald-600/30 text-zinc-300 hover:text-emerald-300 text-xs font-medium transition-all flex items-center gap-1 shadow-sm active:scale-95"
-                      title="切换至该单词进行学习与练习"
                     >
                       <span>切换学习</span>
                       <ArrowRight size={12} />
