@@ -565,7 +565,7 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                           onClick={(e) => e.stopPropagation()}
                         >
                           <span 
-                            className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 transition-all cursor-help flex items-center gap-1 select-none"
+                            className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 transition-all cursor-default flex items-center gap-1 select-none"
                           >
                             <span>词根: {item.root_core}</span>
                           </span>
