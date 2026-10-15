@@ -86,13 +86,16 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
         <ArrowLeftRight size={14} />
       </button>
 
-      {/* Floating Hover Card */}
+      {/* Floating Hover Card - positioned downward below action buttons so it never covers the main word */}
       {isOpen && (
         <div 
-          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 w-72 sm:w-84 z-50 animate-in fade-in zoom-in-95 duration-150 pointer-events-auto"
+          className="absolute top-full right-[-40px] sm:right-auto sm:left-1/2 sm:-translate-x-1/2 mt-2 w-72 sm:w-84 z-50 animate-in fade-in zoom-in-95 duration-150 pointer-events-auto"
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
+          {/* Small upward pointing triangle arrow pointing to icon */}
+          <div className="w-2.5 h-2.5 bg-zinc-900 border-l border-t border-zinc-700/70 rotate-45 mr-[48px] sm:mx-auto -mb-1.5 shadow-sm relative z-10" />
+
           <div className="bg-zinc-900/95 border border-zinc-700/70 rounded-2xl shadow-2xl backdrop-blur-md p-3.5 text-left text-xs text-zinc-100 ring-1 ring-white/5">
             {/* Header */}
             <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-zinc-800">
@@ -211,9 +214,6 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
               )}
             </div>
           </div>
-
-          {/* Small downward pointing triangle arrow */}
-          <div className="w-2.5 h-2.5 bg-zinc-900 border-r border-b border-zinc-700/70 rotate-45 mx-auto -mt-1.5 shadow-sm" />
         </div>
       )}
     </div>

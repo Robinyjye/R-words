@@ -268,6 +268,29 @@ export async function fetchDatamuseSynAnt(word: string): Promise<{ syn: Set<stri
         }
       }
     }
+
+    // Indirect Antonyms via Synonyms (二度反义扩展):
+    // In English dictionaries, descriptive words rarely have direct antonyms (rel_ant is often empty).
+    // Expanding via top synonyms' antonyms drastically improves antonym discovery.
+    if (antSet.size < 6 && Array.isArray(synRes) && synRes.length > 0) {
+      const topSyns = synRes.slice(0, 5).map(s => s.word).filter(Boolean);
+      const indirectAntRes = await Promise.all(
+        topSyns.map(s =>
+          fetch(`https://api.datamuse.com/words?rel_ant=${encodeURIComponent(s)}&max=15`)
+            .then(r => r.ok ? r.json() : [])
+            .catch(() => [])
+        )
+      );
+      for (const list of indirectAntRes) {
+        if (Array.isArray(list)) {
+          for (const item of list) {
+            if (item.word && !synSet.has(item.word.toLowerCase())) {
+              antSet.add(item.word.toLowerCase());
+            }
+          }
+        }
+      }
+    }
   } catch (err) {
     console.warn('Failed to fetch from Datamuse', err);
   }
@@ -280,7 +303,7 @@ export async function fetchDatamuseSynAnt(word: string): Promise<{ syn: Set<stri
 /**
  * Clean and normalize words for comparison (remove punctuation, lowercased, lemmatized approximation)
  */
-function normalizeWord(w: string): string {
+export function normalizeWord(w: string): string {
   return w.trim().toLowerCase().replace(/[^a-z]/g, '');
 }
 
@@ -339,7 +362,33 @@ function checkChineseMeaningOverlap(meaningA?: string, meaningB?: string): boole
 }
 
 /**
- * Check Chinese meaning for antonym markers (e.g. "不..." vs affirmative)
+ * Check suffix opposition (e.g. -ful vs -less)
+ */
+function checkSuffixOpposition(wordA: string, wordB: string): boolean {
+  const a = normalizeWord(wordA);
+  const b = normalizeWord(wordB);
+  if (a.endsWith('ful') && b.endsWith('less') && a.slice(0, -3) === b.slice(0, -4)) return true;
+  if (a.endsWith('less') && b.endsWith('ful') && a.slice(0, -4) === b.slice(0, -3)) return true;
+  return false;
+}
+
+const CHINESE_ANTONYM_PAIRS: [string, string][] = [
+  ['平静', '激动'], ['镇静', '慌乱'], ['严肃', '轻浮'], ['谨慎', '鲁莽'],
+  ['精美', '粗糙'], ['规矩', '随意'], ['整洁', '凌乱'], ['庄重', '放肆'],
+  ['庄重', '轻佻'], ['保守', '激进'], ['刻板', '灵活'], ['平等', '差异'],
+  ['平等', '不公'], ['平等', '歧视'], ['证实', '反驳'], ['证实', '驳斥'],
+  ['承认', '否认'], ['支持', '反对'], ['丰富', '匮乏'], ['繁华', '荒凉'],
+  ['坚固', '脆弱'], ['优秀', '拙劣'], ['宽容', '苛刻'], ['诚实', '虚伪'],
+  ['积极', '消极'], ['乐观', '悲观'], ['顺从', '反抗'], ['谦逊', '傲慢'],
+  ['节俭', '奢侈'], ['勇敢', '怯懦'], ['善良', '邪恶'], ['聪明', '愚蠢'],
+  ['增加', '减少'], ['扩大', '缩小'], ['强化', '削弱'], ['公开', '隐蔽'],
+  ['清晰', '模糊'], ['稳定', '动荡'], ['持久', '短暂'], ['自由', '束缚'],
+  ['抽象', '具体'], ['自然', '人工'], ['合法', '违法'], ['安全', '危险'],
+  ['端庄', '放荡'], ['拘谨', '大方'], ['拘谨', '随和'], ['守旧', '前卫']
+];
+
+/**
+ * Check Chinese meaning for antonym markers (e.g. "不..." vs affirmative or known opposite semantic pairs)
  */
 function checkChineseAntonymOpposition(meaningA?: string, meaningB?: string): boolean {
   if (!meaningA || !meaningB) return false;
@@ -348,8 +397,15 @@ function checkChineseAntonymOpposition(meaningA?: string, meaningB?: string): bo
 
   for (const a of kwA) {
     for (const b of kwB) {
+      // 1. Morphological negation (不/非/无/未)
       if (a === `不${b}` || b === `不${a}` || a === `非${b}` || b === `非${a}` || a === `无${b}` || b === `无${a}`) {
         return true;
+      }
+      // 2. High-confidence semantic contrast pairs
+      for (const [p1, p2] of CHINESE_ANTONYM_PAIRS) {
+        if ((a.includes(p1) && b.includes(p2)) || (a.includes(p2) && b.includes(p1))) {
+          return true;
+        }
       }
     }
   }
@@ -458,6 +514,8 @@ export function findSynonymsAndAntonymsInLibrary(
       isAnt = true;
     } else if (checkPrefixOpposition(targetWord.word, candidate.word)) {
       isAnt = true;
+    } else if (checkSuffixOpposition(targetWord.word, candidate.word)) {
+      isAnt = true;
     } else if (checkChineseAntonymOpposition(targetWord.meaning, candidate.meaning)) {
       isAnt = true;
     }
@@ -498,4 +556,100 @@ export function findSynonymsAndAntonymsInLibrary(
     antonyms: matchedAntonyms,
     totalSearched: allWords.length
   };
+}
+
+export interface WordThesaurusResult {
+  word: string;
+  wordState: WordState;
+  synonyms: WordState[];
+  antonyms: WordState[];
+  hasLibraryMatch: boolean;
+}
+
+export interface SynonymCluster {
+  id: string;
+  rootWord: string;
+  words: WordState[];
+}
+
+export interface AntonymPair {
+  id: string;
+  wordA: WordState;
+  wordB: WordState;
+  reason?: string;
+}
+
+export function getWordThesaurus(targetWord: WordState, allWords: WordState[]): WordThesaurusResult {
+  const result = findSynonymsAndAntonymsInLibrary(targetWord, allWords);
+  return {
+    word: targetWord.word,
+    wordState: targetWord,
+    synonyms: result.synonyms,
+    antonyms: result.antonyms,
+    hasLibraryMatch: result.synonyms.length > 0 || result.antonyms.length > 0
+  };
+}
+
+export function findLibrarySynonymClusters(words: WordState[]): SynonymCluster[] {
+  const clusters: SynonymCluster[] = [];
+  const processed = new Set<string>();
+
+  for (const w of words) {
+    const key = normalizeWord(w.word);
+    if (processed.has(key)) continue;
+
+    const res = findSynonymsAndAntonymsInLibrary(w, words);
+    if (res.synonyms.length > 0) {
+      const clusterWords = [w, ...res.synonyms];
+      clusterWords.forEach(cw => processed.add(normalizeWord(cw.word)));
+      clusters.push({
+        id: `cluster-${w.id}`,
+        rootWord: w.word,
+        words: clusterWords
+      });
+    }
+  }
+  return clusters;
+}
+
+export function findLibraryAntonymPairs(words: WordState[]): AntonymPair[] {
+  const pairs: AntonymPair[] = [];
+  const seenPairs = new Set<string>();
+
+  for (const w of words) {
+    const res = findSynonymsAndAntonymsInLibrary(w, words);
+    for (const ant of res.antonyms) {
+      const pairKey = [w.id, ant.id].sort().join(':');
+      if (!seenPairs.has(pairKey)) {
+        seenPairs.add(pairKey);
+        pairs.push({
+          id: `pair-${pairKey}`,
+          wordA: w,
+          wordB: ant,
+          reason: '词库反义词互联'
+        });
+      }
+    }
+  }
+  return pairs;
+}
+
+export async function generateThesaurusForWords(
+  words: WordState[]
+): Promise<Record<string, { synonyms: string[]; antonyms: string[] }>> {
+  const results: Record<string, { synonyms: string[]; antonyms: string[] }> = {};
+  await Promise.all(
+    words.map(async (w) => {
+      try {
+        const data = await fetchDatamuseSynAnt(w.word);
+        results[w.word] = {
+          synonyms: Array.from(data.syn).slice(0, 8),
+          antonyms: Array.from(data.ant).slice(0, 8)
+        };
+      } catch (err) {
+        results[w.word] = { synonyms: [], antonyms: [] };
+      }
+    })
+  );
+  return results;
 }

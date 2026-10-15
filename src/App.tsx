@@ -2003,7 +2003,7 @@ export default function App() {
     }
 
     // Prepare data for export with Chinese headers and Excel formula protection
-    const exportData = words.map(({ word, part_of_speech, phonetic, prefix, prefix_meaning, root_core, root_meaning, suffix, suffix_meaning, meaning, phrase, example_sentence, listName }) => {
+    const exportData = words.map(({ word, part_of_speech, phonetic, prefix, prefix_meaning, root_core, root_meaning, suffix, suffix_meaning, meaning, synonyms, antonyms, phrase, example_sentence, listName }) => {
       // Helper to prevent Excel from interpreting fields starting with -, =, +, @ as formulas
       const sanitize = (val: string | undefined | null) => {
         const s = val || '';
@@ -2011,6 +2011,12 @@ export default function App() {
           return `'${s}`;
         }
         return s;
+      };
+
+      const formatList = (val?: string | string[]) => {
+        if (!val) return '';
+        if (Array.isArray(val)) return val.join(', ');
+        return val;
       };
 
       return {
@@ -2024,6 +2030,8 @@ export default function App() {
         '后缀': sanitize(suffix),
         '后缀含义': sanitize(suffix_meaning),
         '释义': sanitize(meaning),
+        '近义词': sanitize(formatList(synonyms)),
+        '反义词': sanitize(formatList(antonyms)),
         '词组': sanitize(phrase),
         '例句': sanitize(example_sentence),
         '列表名称': sanitize(listName)
@@ -3368,28 +3376,6 @@ export default function App() {
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50 h-20 resize-none"
                     required
                   />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">近义词 (选填)</label>
-                    <input
-                      type="text"
-                      value={editingWordData.synonyms || ''}
-                      onChange={(e) => setEditingWordData({ ...editingWordData, synonyms: e.target.value })}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50 text-xs font-mono"
-                      placeholder="逗号分隔，如: fair, equal"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">反义词 (选填)</label>
-                    <input
-                      type="text"
-                      value={editingWordData.antonyms || ''}
-                      onChange={(e) => setEditingWordData({ ...editingWordData, antonyms: e.target.value })}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50 text-xs font-mono"
-                      placeholder="逗号分隔，如: unfair, biased"
-                    />
-                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">例句</label>
