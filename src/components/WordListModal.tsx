@@ -37,6 +37,7 @@ export const WordListModal: React.FC<WordListModalProps> = ({
   // Hide word mode (看中忆英)
   const [hideWord, setHideWord] = useState(false);
   const [revealedWordIds, setRevealedWordIds] = useState<Set<string>>(new Set());
+  const [activeWordId, setActiveWordId] = useState<string | null>(null);
 
   // Reset tab when activeList changes
   useEffect(() => {
@@ -49,19 +50,44 @@ export const WordListModal: React.FC<WordListModalProps> = ({
   useEffect(() => {
     setRevealedIds(new Set());
     setRevealedWordIds(new Set());
+    setActiveWordId(null);
   }, [activeTab]);
 
-  // Handle ESC key to close
+  // Handle ESC key to close and Space key to remove word occlusion
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
+        return;
+      }
+
       if (e.key === 'Escape') {
         onClose();
+        return;
+      }
+
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        // Remove word occlusion (把单词的遮挡拿掉)
+        if (hideWord) {
+          if (activeWordId && !revealedWordIds.has(activeWordId)) {
+            setRevealedWordIds(prev => {
+              const next = new Set(prev);
+              next.add(activeWordId);
+              return next;
+            });
+          } else {
+            setHideWord(false);
+          }
+        } else {
+          setHideWord(true);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, hideWord, activeWordId, revealedWordIds]);
 
   // Mastered words that were transferred specifically from the current active list
   const currentListMasteredWords = useMemo(() => {
@@ -253,7 +279,6 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold shadow-sm'
                     : 'text-zinc-400 hover:text-emerald-400'
                 }`}
-                title={`从当前列表 "${activeList}" 转移到已掌握单词的数量 (${currentListMasteredWords.length} 个)`}
               >
                 <CheckCircle2 size={13} />
                 <span>已掌握单词</span>
@@ -287,7 +312,7 @@ export const WordListModal: React.FC<WordListModalProps> = ({
 
             {/* Right Action Toggles */}
             <div className="flex items-center gap-1.5 shrink-0">
-              {/* Hide Words Toggle (看中忆英) */}
+              {/* Hide Word Toggle (看中忆英) */}
               <button
                 type="button"
                 onClick={() => {
@@ -303,10 +328,9 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                     ? 'border-amber-500/50 bg-amber-500/15 text-amber-300 font-bold'
                     : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
                 }`}
-                title={hideWord ? "点击恢复显示英文单词" : "点击隐藏单词，看中文释义回想英文加强记忆"}
               >
                 {hideWord ? <EyeOff size={13} className="text-amber-400" /> : <Eye size={13} />}
-                <span>{hideWord ? '已隐藏单词' : '隐藏单词'}</span>
+                <span>{hideWord ? '已隐藏单词 (空格显示)' : '隐藏单词 (空格)'}</span>
               </button>
 
               {/* Global Meaning Peek Toggle */}
@@ -321,7 +345,6 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                     ? 'border-indigo-500/50 bg-indigo-500/15 text-indigo-300 font-semibold'
                     : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
                 }`}
-                title={showMeanings ? "点击隐藏所有词义" : "点击显示所有词义"}
               >
                 {showMeanings && !hideWord ? <EyeOff size={13} /> : <Eye size={13} />}
                 <span>{showMeanings && !hideWord ? '已显释义' : '隐藏释义 (默认)'}</span>
@@ -465,8 +488,15 @@ export const WordListModal: React.FC<WordListModalProps> = ({
               return (
                 <div
                   key={item.id}
-                  onClick={() => speakWordAndExample(item.word, item.example_sentence)}
-                  className="pt-2.5 first:pt-0 p-3.5 rounded-2xl bg-zinc-900/40 border border-zinc-850 hover:border-zinc-700/80 hover:bg-zinc-900/80 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group cursor-pointer active:scale-[0.998]"
+                  onClick={() => {
+                    setActiveWordId(item.id);
+                    speakWordAndExample(item.word, item.example_sentence);
+                  }}
+                  className={`pt-2.5 first:pt-0 p-3.5 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group cursor-pointer active:scale-[0.998] ${
+                    activeWordId === item.id
+                      ? 'bg-zinc-850 border-emerald-500/40 ring-1 ring-emerald-500/30 shadow-lg'
+                      : 'bg-zinc-900/40 border-zinc-855 hover:border-zinc-700/80 hover:bg-zinc-900/80'
+                  }`}
                 >
                   <div className="space-y-1.5 flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -485,7 +515,7 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                           className="px-2.5 py-0.5 rounded-lg bg-zinc-800/90 hover:bg-zinc-700 text-zinc-400 hover:text-amber-300 font-mono text-sm border border-zinc-700/60 transition-all flex items-center gap-1.5 cursor-pointer group shadow-inner"
                         >
                           <span className="tracking-widest select-none">••••••••</span>
-                          <span className="text-[10px] text-zinc-500 group-hover:text-amber-300 font-sans">偷看</span>
+                          <span className="text-[10px] text-zinc-500 group-hover:text-amber-300 font-sans">偷看 (空格)</span>
                         </button>
                       ) : (
                         <div className="flex items-center gap-1.5">

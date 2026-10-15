@@ -1477,20 +1477,16 @@ export default function App() {
           saveWords(next);
           return next;
         });
-        showToast(`👀 已查看提示：连续正确次数 -1（当前 ${newStreak}/5）`);
       }
     } else {
       setIsHinted(false);
     }
-  }, [currentWord, isDictationMode, isHinted, peekedHintThisWord, showToast]);
+  }, [currentWord, isDictationMode, isHinted, peekedHintThisWord]);
 
   const handleDictationPeekRoot = useCallback(() => {
     if (!currentWord || !isDictationMode) return;
     const hasRootInfo = !!(currentWord.prefix || currentWord.root_core || currentWord.suffix);
-    if (!hasRootInfo) {
-      showToast(`"${currentWord.word}" 暂无词根数据`);
-      return;
-    }
+    if (!hasRootInfo) return;
 
     setShowDictationRoot(prev => !prev);
 
@@ -1509,9 +1505,63 @@ export default function App() {
         saveWords(next);
         return next;
       });
-      showToast(`🌱 已查看词根：连续正确次数 -1（当前 ${newStreak}/5）`);
     }
-  }, [currentWord, isDictationMode, peekedRootThisWord, showToast]);
+  }, [currentWord, isDictationMode, peekedRootThisWord]);
+
+  // Handle Space key in dictation mode: remove word occlusion (isHinted) and root occlusion (showDictationRoot)
+  const handleDictationSpaceReveal = useCallback(() => {
+    if (!currentWord || !isDictationMode) return;
+
+    const hasRootInfo = !!(currentWord.prefix || currentWord.root_core || currentWord.suffix);
+    const isWordCurrentlyHidden = !isHinted;
+    const isRootCurrentlyHidden = hasRootInfo && !showDictationRoot;
+
+    // If either the word or root is occluded, reveal both (拿掉单词与词根的遮挡)
+    if (isWordCurrentlyHidden || isRootCurrentlyHidden) {
+      let penalty = 0;
+
+      if (isWordCurrentlyHidden) {
+        setIsHinted(true);
+        speakWordAndExample(currentWord.word, currentWord.example_sentence);
+        if (!peekedHintThisWord) {
+          penalty += 1;
+        }
+      }
+
+      if (isRootCurrentlyHidden) {
+        setShowDictationRoot(true);
+        if (!peekedRootThisWord) {
+          penalty += 1;
+        }
+      }
+
+      if (!peekedHintThisWord && isWordCurrentlyHidden) {
+        setPeekedHintThisWord(true);
+      }
+      if (!peekedRootThisWord && isRootCurrentlyHidden) {
+        setPeekedRootThisWord(true);
+      }
+
+      if (penalty > 0) {
+        const currentStreak = currentWord.dictation_correct_streak || 0;
+        const newStreak = Math.max(0, currentStreak - penalty);
+        const updatedWord: WordState = {
+          ...currentWord,
+          dictation_correct_streak: newStreak,
+        };
+        setCurrentWord(updatedWord);
+        setWords(prev => {
+          const next = prev.map(w => w.id === currentWord.id ? updatedWord : w);
+          saveWords(next);
+          return next;
+        });
+      }
+    } else {
+      // Both are already revealed -> Space toggles them back to occluded
+      setIsHinted(false);
+      setShowDictationRoot(false);
+    }
+  }, [currentWord, isDictationMode, isHinted, showDictationRoot, peekedHintThisWord, peekedRootThisWord]);
 
   // Handle keyboard input
   useEffect(() => {
@@ -1564,14 +1614,14 @@ export default function App() {
         return;
       }
 
-      // Handle Space: in dictation mode, press Space once to display root!
+      // Handle Space: in dictation mode, press Space to remove word and root occlusion!
       if (e.key === ' ' || e.code === 'Space') {
         const targetWord = currentWord.word;
         // If the next character to type is NOT a space
         if (targetWord[input.length] !== ' ') {
           e.preventDefault();
           if (isDictationMode) {
-            handleDictationPeekRoot();
+            handleDictationSpaceReveal();
             return;
           }
           if (currentWord.phrase) {
@@ -1628,7 +1678,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip, isGameMode, handleDictationPeekRoot]);
+  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip, isGameMode, handleDictationPeekRoot, handleDictationSpaceReveal]);
 
   // Check for completion
   useEffect(() => {
@@ -2683,7 +2733,7 @@ export default function App() {
                         e.stopPropagation();
                         handleBack();
                       }}
-                      className="mr-1.5 text-xs font-mono text-zinc-500 group-hover/prev:text-emerald-400 transition-all cursor-pointer whitespace-nowrap max-w-[90px] sm:max-w-[130px] truncate select-none"
+                      className="mr-1.5 text-sm font-mono text-zinc-500 group-hover/prev:text-emerald-400 transition-all cursor-pointer whitespace-nowrap max-w-[110px] sm:max-w-[160px] truncate select-none"
                       title="上一个单词"
                     >
                       {previousWord.word}
@@ -2724,7 +2774,7 @@ export default function App() {
                         e.stopPropagation();
                         handleSkip();
                       }}
-                      className="ml-1.5 text-xs font-mono text-zinc-500 group-hover/next:text-emerald-400 transition-all cursor-pointer whitespace-nowrap max-w-[90px] sm:max-w-[130px] truncate select-none"
+                      className="ml-1.5 text-sm font-mono text-zinc-500 group-hover/next:text-emerald-400 transition-all cursor-pointer whitespace-nowrap max-w-[110px] sm:max-w-[160px] truncate select-none"
                       title="点击切换至下一个单词"
                     >
                       {isDictationMode && !isHinted ? '•••••' : upcomingWord.word}
