@@ -216,6 +216,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
             is_completed_dictation: (typeof item === 'object' && item.is_completed_dictation !== undefined) ? item.is_completed_dictation : (existingWord?.is_completed_dictation || false),
             ebbinghaus_stage: (typeof item === 'object' && item.ebbinghaus_stage !== undefined) ? item.ebbinghaus_stage : (existingWord?.ebbinghaus_stage || 0),
             is_mastered: isMastered || existingWord?.is_mastered || false,
+            synonyms: typeof item === 'object' 
+              ? (Array.isArray(item.synonyms) ? item.synonyms : (item['同义词'] || item['近义词'] || item.synonyms ? String(item['同义词'] || item['近义词'] || item.synonyms).split(/[,，、]/).map((s: string) => s.trim()).filter(Boolean) : existingWord?.synonyms))
+              : existingWord?.synonyms,
+            antonyms: typeof item === 'object' 
+              ? (Array.isArray(item.antonyms) ? item.antonyms : (item['反义词'] || item.antonyms ? String(item['反义词'] || item.antonyms).split(/[,，、]/).map((s: string) => s.trim()).filter(Boolean) : existingWord?.antonyms))
+              : existingWord?.antonyms,
           };
 
           // If forceEnrich is on, always enrich

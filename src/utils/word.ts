@@ -11,6 +11,8 @@ export interface WordData {
   meaning: string;
   phrase?: string;
   example_sentence?: string;
+  synonyms?: string;
+  antonyms?: string;
 }
 
 export interface WordState extends WordData {

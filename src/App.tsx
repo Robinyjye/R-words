@@ -14,6 +14,7 @@ import { StatsModal } from './components/StatsModal';
 import { RootDetectiveGame } from './components/RootDetectiveGame';
 import { SameRootWordsModal } from './components/SameRootWordsModal';
 import { WordListModal } from './components/WordListModal';
+import { SynonymAntonymPopover } from './components/SynonymAntonymPopover';
 import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, Save, CopyX, BarChart2, Search, BookOpen, Sparkles, Loader2, Users, Undo2, Play, Pause } from 'lucide-react';
 import Papa from 'papaparse';
 import { motion, AnimatePresence } from 'motion/react';
@@ -2937,6 +2938,17 @@ export default function App() {
                 >
                   <Trash2 size={14} />
                 </button>
+                <SynonymAntonymPopover
+                  currentWord={currentWord}
+                  allWords={words}
+                  onSelectWord={(selectedWord) => {
+                    if (selectedWord.listName && selectedWord.listName !== activeList) {
+                      setActiveList(selectedWord.listName);
+                    }
+                    setCurrentWord(selectedWord);
+                    setInput('');
+                  }}
+                />
               </div>
 
               {/* Auxiliary Info */}
@@ -3356,6 +3368,28 @@ export default function App() {
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50 h-20 resize-none"
                     required
                   />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">近义词 (选填)</label>
+                    <input
+                      type="text"
+                      value={editingWordData.synonyms || ''}
+                      onChange={(e) => setEditingWordData({ ...editingWordData, synonyms: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50 text-xs font-mono"
+                      placeholder="逗号分隔，如: fair, equal"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">反义词 (选填)</label>
+                    <input
+                      type="text"
+                      value={editingWordData.antonyms || ''}
+                      onChange={(e) => setEditingWordData({ ...editingWordData, antonyms: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50 text-xs font-mono"
+                      placeholder="逗号分隔，如: unfair, biased"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">例句</label>

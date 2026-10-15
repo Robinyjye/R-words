@@ -148,6 +148,54 @@ async function startServer() {
     }
   });
 
+  // API route for generating synonyms and antonyms
+  app.post("/api/synonyms-antonyms", async (req, res) => {
+    const { words } = req.body;
+    if (!words || !Array.isArray(words) || words.length === 0) {
+      return res.status(400).json({ error: "Words array is required" });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey) {
+      try {
+        const { GoogleGenAI } = await import("@google/genai");
+        const ai = new GoogleGenAI({ apiKey });
+        const wordListStr = words.map((w: any) => typeof w === 'string' ? w : `${w.word}${w.meaning ? ` (${w.meaning})` : ''}`).join(', ');
+        const prompt = `Provide authoritative English synonyms and antonyms for the following vocabulary words: ${wordListStr}.
+Return strictly JSON format as an object where each key is the exact English word (lowercase), and value has "synonyms" (array of 3-6 strings) and "antonyms" (array of 2-5 strings, or empty array if no clear antonym exists):
+{
+  "example_word": {
+    "synonyms": ["syn1", "syn2"],
+    "antonyms": ["ant1", "ant2"]
+  }
+}`;
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json"
+          }
+        });
+
+        const text = response.text;
+        if (text) {
+          const parsed = JSON.parse(text);
+          return res.json({
+            success: true,
+            results: parsed
+          });
+        }
+      } catch (err: any) {
+        console.error("Gemini synonyms-antonyms error in server:", err);
+      }
+    }
+
+    res.json({
+      success: false,
+      message: "AI service unavailable"
+    });
+  });
+
   // API route for generating example sentence and phrase
   app.post("/api/generate-sentence", async (req, res) => {
     const { word, meaning, part_of_speech } = req.body;

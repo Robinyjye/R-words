@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, Volume2, ArrowRight, BookOpen, Undo2, CheckCircle2, Eye, EyeOff, Layers, Database, Clock, RotateCcw, Search } from 'lucide-react';
+import { X, Volume2, ArrowRight, ArrowLeftRight, BookOpen, Undo2, CheckCircle2, Eye, EyeOff, Layers, Database, Clock, RotateCcw, Search } from 'lucide-react';
 import { WordState, getPartOfSpeechBadgeClass } from '../utils/word';
 import { speakWord, speakWordAndExample } from '../utils/audio';
 
@@ -11,6 +11,7 @@ interface WordListModalProps {
   currentListWords: WordState[];
   onSelectWord: (word: WordState) => void;
   onReturnWord: (word: WordState) => void;
+  onOpenSynonymsModal?: () => void;
 }
 
 export const WordListModal: React.FC<WordListModalProps> = ({
@@ -21,6 +22,7 @@ export const WordListModal: React.FC<WordListModalProps> = ({
   currentListWords,
   onSelectWord,
   onReturnWord,
+  onOpenSynonymsModal,
 }) => {
   // Tabs: 'current' | 'mastered'
   const [activeTab, setActiveTab] = useState<'current' | 'mastered'>(() => {
@@ -349,6 +351,22 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                 {showMeanings && !hideWord ? <EyeOff size={13} /> : <Eye size={13} />}
                 <span>{showMeanings && !hideWord ? '已显释义' : '隐藏释义 (默认)'}</span>
               </button>
+
+              {/* Synonyms & Antonyms Button */}
+              {onOpenSynonymsModal && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenSynonymsModal();
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 hover:bg-emerald-500/15 hover:border-emerald-500/40 text-zinc-400 hover:text-emerald-300 text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                  title="查看词库同义词与反义词"
+                >
+                  <ArrowLeftRight size={13} className="text-emerald-400" />
+                  <span>同反义词</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
