@@ -222,6 +222,15 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose, exi
             antonyms: typeof item === 'object' 
               ? (Array.isArray(item.antonyms) ? item.antonyms : (item['反义词'] || item.antonyms ? String(item['反义词'] || item.antonyms).split(/[,，、]/).map((s: string) => s.trim()).filter(Boolean) : existingWord?.antonyms))
               : existingWord?.antonyms,
+            confidence: typeof item === 'object'
+              ? (['low', 'medium', 'high'].includes(String(item.confidence || item['信心度'] || item['掌握度'] || '').toLowerCase())
+                  ? (String(item.confidence || item['信心度'] || item['掌握度']).toLowerCase() as any)
+                  : (String(item['信心度'] || item['掌握度'] || '').includes('低') || String(item['信心度'] || '').includes('需强化')
+                      ? 'low'
+                      : (String(item['信心度'] || item['掌握度'] || '').includes('高') || String(item['信心度'] || '').includes('熟记')
+                          ? 'high'
+                          : (existingWord?.confidence || 'medium'))))
+              : (existingWord?.confidence || 'medium'),
           };
 
           // If forceEnrich is on, always enrich

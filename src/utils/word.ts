@@ -1,3 +1,5 @@
+export type ConfidenceLevel = 'low' | 'medium' | 'high';
+
 export interface WordData {
   word: string;
   part_of_speech: string;
@@ -13,6 +15,7 @@ export interface WordData {
   example_sentence?: string;
   synonyms?: string | string[];
   antonyms?: string | string[];
+  confidence?: ConfidenceLevel;
 }
 
 export interface WordState extends WordData {

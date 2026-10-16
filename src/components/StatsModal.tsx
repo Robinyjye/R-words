@@ -270,6 +270,16 @@ export function StatsModal({ isOpen, onClose, stats, words = [] }: StatsModalPro
       ? Math.max(0, Math.round((onTrackWords / totalWords) * 100))
       : 100;
 
+    let lowConf = 0;
+    let medConf = 0;
+    let highConf = 0;
+    words.forEach(w => {
+      const c = w.confidence || 'medium';
+      if (c === 'low') lowConf++;
+      else if (c === 'high') highConf++;
+      else medConf++;
+    });
+
     return {
       totalWords,
       stage0,
@@ -280,6 +290,9 @@ export function StatsModal({ isOpen, onClose, stats, words = [] }: StatsModalPro
       dueWordsCount,
       retentionScore,
       complianceRate,
+      lowConf,
+      medConf,
+      highConf,
     };
   }, [words]);
 
@@ -643,6 +656,60 @@ export function StatsModal({ isOpen, onClose, stats, words = [] }: StatsModalPro
                       </div>
                     );
                   })}
+                </div>
+
+                {/* Confidence Level Distribution */}
+                <div className="bg-zinc-950/60 border border-zinc-800/80 rounded-2xl p-4 mt-3">
+                  <div className="flex items-center justify-between text-xs mb-3">
+                    <span className="font-bold text-zinc-300 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                      词库信心度分布 (Confidence Breakdown)
+                    </span>
+                    <span className="text-[11px] font-mono text-zinc-500">
+                      根据信心度动态优化艾宾浩斯复习周期
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="bg-zinc-900/60 border border-rose-500/25 p-3 rounded-xl flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-rose-300">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                          需强化 (Low)
+                        </div>
+                        <div className="text-[10px] text-zinc-500 mt-0.5">间隔 0.5x · 优先复习</div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-base font-bold font-mono text-white">{ebbinghausStages.lowConf}</span>
+                        <span className="text-[10px] text-zinc-500 ml-1">词</span>
+                      </div>
+                    </div>
+                    <div className="bg-zinc-900/60 border border-amber-500/25 p-3 rounded-xl flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                          掌握中 (Med)
+                        </div>
+                        <div className="text-[10px] text-zinc-500 mt-0.5">间隔 1.0x · 标准周期</div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-base font-bold font-mono text-white">{ebbinghausStages.medConf}</span>
+                        <span className="text-[10px] text-zinc-500 ml-1">词</span>
+                      </div>
+                    </div>
+                    <div className="bg-zinc-900/60 border border-emerald-500/25 p-3 rounded-xl flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-300">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          熟记 (High)
+                        </div>
+                        <div className="text-[10px] text-zinc-500 mt-0.5">间隔 1.75x · 延长周期</div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-base font-bold font-mono text-white">{ebbinghausStages.highConf}</span>
+                        <span className="text-[10px] text-zinc-500 ml-1">词</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 

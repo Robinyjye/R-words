@@ -598,6 +598,39 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                         </span>
                       )}
 
+                      {/* Confidence Level Badge */}
+                      {item.confidence && (
+                        <span
+                          className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md border ${
+                            item.confidence === 'low'
+                              ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                              : item.confidence === 'high'
+                              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                              : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                          }`}
+                          title={
+                            item.confidence === 'low'
+                              ? '信心度：需强化 (Low) - 艾宾浩斯复习间隔减半 (0.5x)，优先排队安排复习'
+                              : item.confidence === 'high'
+                              ? '信心度：熟记 (High) - 复习间隔延长 (1.75x)'
+                              : '信心度：掌握中 (Med) - 标准复习间隔 (1.0x)'
+                          }
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              item.confidence === 'low'
+                                ? 'bg-rose-400'
+                                : item.confidence === 'high'
+                                ? 'bg-emerald-400'
+                                : 'bg-amber-400'
+                            }`}
+                          />
+                          <span>
+                            {item.confidence === 'low' ? '需强化' : item.confidence === 'high' ? '熟记' : '掌握中'}
+                          </span>
+                        </span>
+                      )}
+
                       {/* Mastered status badge */}
                       {isMastered && (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">

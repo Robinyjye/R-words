@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { WordState } from './utils/word';
-import { loadWords, saveWords, getNextWordToReview, isWordDue, EBBINGHAUS_INTERVALS } from './utils/storage';
+import { WordState, ConfidenceLevel } from './utils/word';
+import { loadWords, saveWords, getNextWordToReview, isWordDue, EBBINGHAUS_INTERVALS, getEffectiveInterval, getConfidencePriorityWeight } from './utils/storage';
 import { enrichWords } from './utils/gemini';
 import { searchSimilarWords } from './utils/search';
 import { playKeystrokeSound, playSuccessSound, speakWord, speakWordAndExample, playWordAndExampleSequence, playComboSound, playChimeArpeggio } from './utils/audio';
@@ -359,17 +359,36 @@ export default function App() {
 
       if (dueWords.length > 1) {
         return [...dueWords].sort((a, b) => {
+          // 1. Errors first
+          if (a.has_error && !b.has_error) return -1;
+          if (!a.has_error && b.has_error) return 1;
+
           const stageA = a.ebbinghaus_stage ?? 0;
           const stageB = b.ebbinghaus_stage ?? 0;
           if (stageA > 0 && stageB === 0) return -1;
           if (stageA === 0 && stageB > 0) return 1;
+
+          // 2. Prioritize low confidence words ('low' > 'medium' > 'high')
+          const confWeightA = getConfidencePriorityWeight(a.confidence);
+          const confWeightB = getConfidencePriorityWeight(b.confidence);
+          if (confWeightA !== confWeightB) {
+            return confWeightB - confWeightA;
+          }
+
+          // 3. Overdue ratio by effective interval
           if (stageA > 0 && stageB > 0) {
+            const intervalA = Math.max(1, getEffectiveInterval(a, stageA));
+            const intervalB = Math.max(1, getEffectiveInterval(b, stageB));
+            const overdueRatioA = (now - (a.last_review_time || 0)) / intervalA;
+            const overdueRatioB = (now - (b.last_review_time || 0)) / intervalB;
+            if (Math.abs(overdueRatioB - overdueRatioA) > 0.05) {
+              return overdueRatioB - overdueRatioA;
+            }
             if (stageA !== stageB) return stageA - stageB;
             return (a.last_review_time || 0) - (b.last_review_time || 0);
           }
-          if (a.has_error && !b.has_error) return -1;
-          if (!a.has_error && b.has_error) return 1;
-          return 0;
+
+          return (a.last_review_time || 0) - (b.last_review_time || 0);
         });
       }
     }
@@ -943,12 +962,23 @@ export default function App() {
       if (stageA > 0 && stageB === 0) return -1;
       if (stageA === 0 && stageB > 0) return 1;
 
+      // Prioritize low confidence words ('low' > 'medium' > 'high')
+      const confWeightA = getConfidencePriorityWeight(a.confidence);
+      const confWeightB = getConfidencePriorityWeight(b.confidence);
+      if (confWeightA !== confWeightB) {
+        return confWeightB - confWeightA;
+      }
+
       if (stageA > 0 && stageB > 0) {
-        const intervalA = EBBINGHAUS_INTERVALS[stageA] || EBBINGHAUS_INTERVALS[EBBINGHAUS_INTERVALS.length - 1];
-        const intervalB = EBBINGHAUS_INTERVALS[stageB] || EBBINGHAUS_INTERVALS[EBBINGHAUS_INTERVALS.length - 1];
+        const intervalA = Math.max(1, getEffectiveInterval(a, stageA));
+        const intervalB = Math.max(1, getEffectiveInterval(b, stageB));
         const overdueRatioA = (now - (a.last_review_time || 0)) / intervalA;
         const overdueRatioB = (now - (b.last_review_time || 0)) / intervalB;
-        return overdueRatioB - overdueRatioA;
+        if (Math.abs(overdueRatioB - overdueRatioA) > 0.05) {
+          return overdueRatioB - overdueRatioA;
+        }
+        if (stageA !== stageB) return stageA - stageB;
+        return (a.last_review_time || 0) - (b.last_review_time || 0);
       }
 
       return (a.last_review_time || 0) - (b.last_review_time || 0);
@@ -1564,6 +1594,27 @@ export default function App() {
     }
   }, [currentWord, isDictationMode, isHinted, showDictationRoot, peekedHintThisWord, peekedRootThisWord]);
 
+  const handleSetConfidence = useCallback((level: ConfidenceLevel) => {
+    if (!currentWord) return;
+    const updatedWord: WordState = {
+      ...currentWord,
+      confidence: level
+    };
+    setCurrentWord(updatedWord);
+    setWords(prevWords => {
+      const nextWords = prevWords.map(w => w.id === currentWord.id ? updatedWord : w);
+      saveWords(nextWords);
+      return nextWords;
+    });
+
+    const labelMap: Record<ConfidenceLevel, { title: string; desc: string }> = {
+      low: { title: '需强化 (Low)', desc: '艾宾浩斯复习间隔减半 (0.5x)，在复习队列中优先排队！' },
+      medium: { title: '掌握中 (Med)', desc: '标准艾宾浩斯遗忘曲线复习间隔 (1.0x)' },
+      high: { title: '熟记 (High)', desc: '记忆牢固，复习间隔延长 (1.75x)，减少重复打扰' }
+    };
+    showToast(`"${currentWord.word}" 信心度已设为「${labelMap[level].title}」：${labelMap[level].desc}`);
+  }, [currentWord, showToast]);
+
   // Handle keyboard input
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1571,6 +1622,14 @@ export default function App() {
 
       // Don't handle keys if user is typing in an input/select
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
+
+      // Alt + 1/2/3 to quickly toggle confidence level (Low / Med / High)
+      if (e.altKey && (e.key === '1' || e.key === '2' || e.key === '3')) {
+        e.preventDefault();
+        const confMap: Record<string, ConfidenceLevel> = { '1': 'low', '2': 'medium', '3': 'high' };
+        handleSetConfidence(confMap[e.key]);
+        return;
+      }
 
       // Ignore modifier keys
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1679,7 +1738,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip, isGameMode, handleDictationPeekRoot, handleDictationSpaceReveal]);
+  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip, isGameMode, handleDictationPeekRoot, handleDictationSpaceReveal, handleSetConfidence]);
 
   // Check for completion
   useEffect(() => {
@@ -1755,6 +1814,7 @@ export default function App() {
       ebbinghaus_stage: isAssistedOrError 
         ? Math.max(0, (currentWord.ebbinghaus_stage || 0) - 1) 
         : Math.min(9, (currentWord.ebbinghaus_stage || 0) + 1),
+      confidence: isAssistedOrError ? 'low' : (currentWord.confidence || 'medium'),
     };
 
     const updatedWords = words.map(w => w.id === currentWord.id ? updatedWord : w);
@@ -1951,7 +2011,7 @@ export default function App() {
         if (stage === 0) return false;
         
         const lastReview = w.last_review_time || 0;
-        const interval = EBBINGHAUS_INTERVALS[stage] || EBBINGHAUS_INTERVALS[EBBINGHAUS_INTERVALS.length - 1];
+        const interval = getEffectiveInterval(w, stage);
         return now - lastReview < interval;
       }).length;
       
@@ -2003,7 +2063,7 @@ export default function App() {
     }
 
     // Prepare data for export with Chinese headers and Excel formula protection
-    const exportData = words.map(({ word, part_of_speech, phonetic, prefix, prefix_meaning, root_core, root_meaning, suffix, suffix_meaning, meaning, synonyms, antonyms, phrase, example_sentence, listName }) => {
+    const exportData = words.map(({ word, part_of_speech, phonetic, prefix, prefix_meaning, root_core, root_meaning, suffix, suffix_meaning, meaning, synonyms, antonyms, confidence, phrase, example_sentence, listName }) => {
       // Helper to prevent Excel from interpreting fields starting with -, =, +, @ as formulas
       const sanitize = (val: string | undefined | null) => {
         const s = val || '';
@@ -2032,6 +2092,7 @@ export default function App() {
         '释义': sanitize(meaning),
         '近义词': sanitize(formatList(synonyms)),
         '反义词': sanitize(formatList(antonyms)),
+        '信心度': sanitize(confidence || 'medium'),
         '词组': sanitize(phrase),
         '例句': sanitize(example_sentence),
         '列表名称': sanitize(listName)
@@ -2959,6 +3020,60 @@ export default function App() {
                 />
               </div>
 
+              {/* Confidence Level Selector */}
+              <div className="flex items-center justify-center gap-1.5 -mt-3 mb-6 select-none">
+                <span className="text-[10px] font-mono tracking-wider text-zinc-500 uppercase mr-0.5">
+                  信心度:
+                </span>
+                {(['low', 'medium', 'high'] as ConfidenceLevel[]).map((level) => {
+                  const isSelected = (currentWord.confidence || 'medium') === level;
+                  const config = {
+                    low: {
+                      label: '需强化 (Low)',
+                      selectedClass: 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-sm shadow-rose-950/60 ring-1 ring-rose-500/40 font-semibold',
+                      dotClass: 'bg-rose-400 animate-pulse',
+                      hoverClass: 'hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/30',
+                      title: '模糊/需强化 (Low)：艾宾浩斯复习间隔减半 (0.5x)，优先排队安排复习 (快捷键: Alt+1)'
+                    },
+                    medium: {
+                      label: '掌握中 (Med)',
+                      selectedClass: 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-950/60 ring-1 ring-amber-500/40 font-semibold',
+                      dotClass: 'bg-amber-400',
+                      hoverClass: 'hover:text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/30',
+                      title: '掌握中 (Med)：标准艾宾浩斯遗忘曲线复习间隔 (1.0x) (快捷键: Alt+2)'
+                    },
+                    high: {
+                      label: '熟记 (High)',
+                      selectedClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-950/60 ring-1 ring-emerald-500/40 font-semibold',
+                      dotClass: 'bg-emerald-400',
+                      hoverClass: 'hover:text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/30',
+                      title: '牢固/熟记 (High)：复习间隔延长 (1.75x)，减少重复打扰 (快捷键: Alt+3)'
+                    }
+                  }[level];
+
+                  return (
+                    <button
+                      key={level}
+                      type="button"
+                      tabIndex={-1}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleSetConfidence(level);
+                      }}
+                      className={`text-[11px] px-2.5 py-0.5 rounded-full border transition-all flex items-center gap-1 cursor-pointer ${
+                        isSelected
+                          ? `${config.selectedClass}`
+                          : `text-zinc-500 bg-zinc-900/60 border-zinc-800/80 ${config.hoverClass}`
+                      }`}
+                      title={config.title}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? config.dotClass : 'bg-zinc-600'}`} />
+                      <span>{config.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
               {/* Auxiliary Info */}
               <div className="flex flex-col items-center space-y-3 mb-12">
                 <div className="flex items-center space-x-2">
@@ -3376,6 +3491,35 @@ export default function App() {
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500/50 h-20 resize-none"
                     required
                   />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">信心度 (Confidence Level)</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['low', 'medium', 'high'] as ConfidenceLevel[]).map((level) => {
+                      const isSelected = (editingWordData.confidence || 'medium') === level;
+                      const config = {
+                        low: { label: '需强化 (Low)', desc: '0.5x 间隔 · 优先', active: 'bg-rose-500/20 text-rose-300 border-rose-500/50' },
+                        medium: { label: '掌握中 (Medium)', desc: '1.0x 标准间隔', active: 'bg-amber-500/20 text-amber-300 border-amber-500/50' },
+                        high: { label: '熟记 (High)', desc: '1.75x 延长间隔', active: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50' }
+                      }[level];
+
+                      return (
+                        <button
+                          key={level}
+                          type="button"
+                          onClick={() => setEditingWordData({ ...editingWordData, confidence: level })}
+                          className={`py-2 px-2 rounded-lg border text-xs font-medium transition-all text-center cursor-pointer ${
+                            isSelected
+                              ? `${config.active} font-bold ring-1 ring-current`
+                              : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+                          }`}
+                        >
+                          <div>{config.label}</div>
+                          <div className="text-[10px] opacity-75 mt-0.5">{config.desc}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">例句</label>
