@@ -86,17 +86,20 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
         <ArrowLeftRight size={14} />
       </button>
 
-      {/* Floating Hover Card - positioned downward below action buttons so it never covers the main word */}
+      {/* Floating Hover Card - positioned on the right and shifted downward so it stays below the main word */}
       {isOpen && (
         <div 
-          className="absolute top-full right-[-40px] sm:right-auto sm:left-1/2 sm:-translate-x-1/2 mt-2 w-72 sm:w-84 z-50 animate-in fade-in zoom-in-95 duration-150 pointer-events-auto"
+          className="absolute left-full top-[-6px] ml-3.5 w-72 sm:w-80 z-50 animate-in fade-in zoom-in-95 duration-150 pointer-events-auto"
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
-          {/* Small upward pointing triangle arrow pointing to icon */}
-          <div className="w-2.5 h-2.5 bg-zinc-900 border-l border-t border-zinc-700/70 rotate-45 mr-[48px] sm:mx-auto -mb-1.5 shadow-sm relative z-10" />
+          {/* Invisible hover bridge to prevent mouseleave when moving across the gap */}
+          <div className="absolute -left-4 top-0 w-4 h-full pointer-events-auto" />
 
-          <div className="bg-zinc-900/95 border border-zinc-700/70 rounded-2xl shadow-2xl backdrop-blur-md p-3.5 text-left text-xs text-zinc-100 ring-1 ring-white/5">
+          {/* Small left-pointing triangle arrow directed at the icon */}
+          <div className="w-2.5 h-2.5 bg-zinc-900 border-l border-b border-zinc-700/70 rotate-45 absolute -left-1.5 top-[14px] shadow-sm z-10" />
+
+          <div className="relative bg-zinc-900/95 border border-zinc-700/70 rounded-2xl shadow-2xl backdrop-blur-md p-3.5 text-left text-xs text-zinc-100 ring-1 ring-white/5">
             {/* Header */}
             <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-zinc-800">
               <div className="flex items-center gap-1.5 font-medium text-zinc-200">
