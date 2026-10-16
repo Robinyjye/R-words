@@ -209,8 +209,8 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
             {/* Footer tip */}
             <div className="mt-2.5 pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[10px] text-zinc-400">
               <span className="flex items-center gap-1">
-                <Sparkles size={10} className="text-zinc-400" />
-                <span>悬停实时检索全库</span>
+                <Sparkles size={10} className="text-sky-400" />
+                <span>支持中英文义与同义词林检索</span>
               </span>
               {onSelectWord && (
                 <span className="text-zinc-400">点击结果可切换单词</span>
