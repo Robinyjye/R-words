@@ -89,7 +89,7 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
       {/* Floating Hover Card - positioned on the right and shifted downward so it stays below the main word */}
       {isOpen && (
         <div 
-          className="absolute left-full top-[-6px] ml-3.5 w-72 sm:w-80 z-50 animate-in fade-in zoom-in-95 duration-150 pointer-events-auto"
+          className="absolute left-full top-[-6px] ml-3.5 w-80 sm:w-[370px] z-50 animate-in fade-in zoom-in-95 duration-150 pointer-events-auto"
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
@@ -99,56 +99,56 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
           {/* Small left-pointing triangle arrow directed at the icon */}
           <div className="w-2.5 h-2.5 bg-zinc-900 border-l border-b border-zinc-700/70 rotate-45 absolute -left-1.5 top-[14px] shadow-sm z-10" />
 
-          <div className="relative bg-zinc-900/95 border border-zinc-700/70 rounded-2xl shadow-2xl backdrop-blur-md p-3.5 text-left text-xs text-zinc-100 ring-1 ring-white/5">
+          <div className="relative bg-zinc-900/95 border border-zinc-700/70 rounded-2xl shadow-2xl backdrop-blur-md p-4 text-left text-sm text-zinc-100 ring-1 ring-white/5">
             {/* Header */}
             <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-zinc-800">
-              <div className="flex items-center gap-1.5 font-medium text-zinc-200">
-                <ArrowLeftRight size={13} className="text-sky-400 shrink-0" />
+              <div className="flex items-center gap-1.5 font-medium text-sm text-zinc-200">
+                <ArrowLeftRight size={14} className="text-sky-400 shrink-0" />
                 <span>近义词与反义词检索</span>
                 <span className="font-mono text-sky-300 font-bold ml-0.5">
                   [{currentWord.word}]
                 </span>
               </div>
-              <div className="flex items-center gap-1 text-[10px] text-zinc-400 font-mono bg-zinc-800/80 px-2 py-0.5 rounded-full border border-zinc-700/50">
-                <Database size={10} className="text-zinc-400 shrink-0" />
+              <div className="flex items-center gap-1 text-xs text-zinc-400 font-mono bg-zinc-800/80 px-2 py-0.5 rounded-full border border-zinc-700/50">
+                <Database size={11} className="text-zinc-400 shrink-0" />
                 <span>词库 {allWords.length}</span>
-                {isLoadingApi && <Loader2 size={9} className="animate-spin text-sky-400 ml-0.5" />}
+                {isLoadingApi && <Loader2 size={10} className="animate-spin text-sky-400 ml-0.5" />}
               </div>
             </div>
 
             {/* Synonyms Section */}
             <div className="mb-3">
               <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-1.5 font-semibold text-emerald-400 text-[11px] tracking-wide">
+                <div className="flex items-center gap-1.5 font-semibold text-emerald-400 text-xs tracking-wide">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                   <span>近义词 (Synonyms)</span>
                 </div>
                 {searchResult.synonyms.length > 0 && (
-                  <span className="text-[10px] font-mono text-zinc-400">
+                  <span className="text-xs font-mono text-zinc-400">
                     找到 {searchResult.synonyms.length} 个
                   </span>
                 )}
               </div>
 
               {searchResult.synonyms.length > 0 ? (
-                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
                   {searchResult.synonyms.map((item) => (
                     <div
                       key={item.id}
                       onClick={() => onSelectWord && onSelectWord(item)}
-                      className={`flex items-baseline gap-2 p-1.5 rounded-lg bg-zinc-800/60 hover:bg-emerald-500/10 border border-zinc-700/40 hover:border-emerald-500/30 transition-all ${
+                      className={`flex items-baseline gap-2 px-2 py-1.5 rounded-lg bg-zinc-800/60 hover:bg-emerald-500/10 border border-zinc-700/40 hover:border-emerald-500/30 transition-all ${
                         onSelectWord ? 'cursor-pointer group/item' : ''
                       }`}
                     >
-                      <span className="font-mono font-bold text-white group-hover/item:text-emerald-300 shrink-0">
+                      <span className="font-mono font-bold text-sm text-white group-hover/item:text-emerald-300 shrink-0">
                         {item.word}
                       </span>
                       {item.part_of_speech && (
-                        <span className="text-[10px] font-mono text-emerald-400/80 shrink-0">
+                        <span className="text-xs font-mono text-emerald-400/80 shrink-0">
                           {item.part_of_speech}
                         </span>
                       )}
-                      <span className="text-zinc-300 text-[11px] flex-1">
+                      <span className="text-zinc-300 text-xs flex-1">
                         {item.meaning}
                       </span>
                     </div>
@@ -164,36 +164,36 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
             {/* Antonyms Section */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-1.5 font-semibold text-rose-400 text-[11px] tracking-wide">
+                <div className="flex items-center gap-1.5 font-semibold text-rose-400 text-xs tracking-wide">
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
                   <span>反义词 (Antonyms)</span>
                 </div>
                 {searchResult.antonyms.length > 0 && (
-                  <span className="text-[10px] font-mono text-zinc-400">
+                  <span className="text-xs font-mono text-zinc-400">
                     找到 {searchResult.antonyms.length} 个
                   </span>
                 )}
               </div>
 
               {searchResult.antonyms.length > 0 ? (
-                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
                   {searchResult.antonyms.map((item) => (
                     <div
                       key={item.id}
                       onClick={() => onSelectWord && onSelectWord(item)}
-                      className={`flex items-baseline gap-2 p-1.5 rounded-lg bg-zinc-800/60 hover:bg-rose-500/10 border border-zinc-700/40 hover:border-rose-500/30 transition-all ${
+                      className={`flex items-baseline gap-2 px-2 py-1.5 rounded-lg bg-zinc-800/60 hover:bg-rose-500/10 border border-zinc-700/40 hover:border-rose-500/30 transition-all ${
                         onSelectWord ? 'cursor-pointer group/item' : ''
                       }`}
                     >
-                      <span className="font-mono font-bold text-white group-hover/item:text-rose-300 shrink-0">
+                      <span className="font-mono font-bold text-sm text-white group-hover/item:text-rose-300 shrink-0">
                         {item.word}
                       </span>
                       {item.part_of_speech && (
-                        <span className="text-[10px] font-mono text-rose-400/80 shrink-0">
+                        <span className="text-xs font-mono text-rose-400/80 shrink-0">
                           {item.part_of_speech}
                         </span>
                       )}
-                      <span className="text-zinc-300 text-[11px] flex-1">
+                      <span className="text-zinc-300 text-xs flex-1">
                         {item.meaning}
                       </span>
                     </div>
@@ -207,9 +207,9 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
             </div>
 
             {/* Footer tip */}
-            <div className="mt-2.5 pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[10px] text-zinc-400">
+            <div className="mt-2.5 pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[11px] text-zinc-400">
               <span className="flex items-center gap-1">
-                <Sparkles size={10} className="text-sky-400" />
+                <Sparkles size={11} className="text-sky-400" />
                 <span>支持中英文义与同义词林检索</span>
               </span>
               {onSelectWord && (
