@@ -3021,7 +3021,7 @@ export default function App() {
               </div>
 
               {/* Confidence Level Selector */}
-              <div className="flex items-center justify-center gap-1.5 -mt-3 mb-6 select-none">
+              <div className="flex items-center justify-center gap-1.5 -mt-3 mb-6 select-none opacity-60 hover:opacity-100 transition-opacity">
                 <span className="text-[10px] font-mono tracking-wider text-zinc-500 uppercase mr-0.5">
                   信心度:
                 </span>
@@ -3030,23 +3030,17 @@ export default function App() {
                   const config = {
                     low: {
                       label: '需强化 (Low)',
-                      selectedClass: 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-sm shadow-rose-950/60 ring-1 ring-rose-500/40 font-semibold',
-                      dotClass: 'bg-rose-400 animate-pulse',
-                      hoverClass: 'hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/30',
+                      dotClass: 'bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.9)]',
                       title: '模糊/需强化 (Low)：艾宾浩斯复习间隔减半 (0.5x)，优先排队安排复习 (快捷键: Alt+1)'
                     },
                     medium: {
                       label: '掌握中 (Med)',
-                      selectedClass: 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-950/60 ring-1 ring-amber-500/40 font-semibold',
-                      dotClass: 'bg-amber-400',
-                      hoverClass: 'hover:text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/30',
+                      dotClass: 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.9)]',
                       title: '掌握中 (Med)：标准艾宾浩斯遗忘曲线复习间隔 (1.0x) (快捷键: Alt+2)'
                     },
                     high: {
                       label: '熟记 (High)',
-                      selectedClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-950/60 ring-1 ring-emerald-500/40 font-semibold',
-                      dotClass: 'bg-emerald-400',
-                      hoverClass: 'hover:text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/30',
+                      dotClass: 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]',
                       title: '牢固/熟记 (High)：复习间隔延长 (1.75x)，减少重复打扰 (快捷键: Alt+3)'
                     }
                   }[level];
@@ -3060,14 +3054,14 @@ export default function App() {
                         e.preventDefault();
                         handleSetConfidence(level);
                       }}
-                      className={`text-[11px] px-2.5 py-0.5 rounded-full border transition-all flex items-center gap-1 cursor-pointer ${
+                      className={`text-[11px] px-2.5 py-0.5 rounded-full border transition-all flex items-center gap-1.5 cursor-pointer bg-zinc-900/60 border-zinc-800/80 ${
                         isSelected
-                          ? `${config.selectedClass}`
-                          : `text-zinc-500 bg-zinc-900/60 border-zinc-800/80 ${config.hoverClass}`
+                          ? 'text-zinc-300'
+                          : 'text-zinc-500 hover:text-zinc-400 hover:border-zinc-700/80'
                       }`}
                       title={config.title}
                     >
-                      <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? config.dotClass : 'bg-zinc-600'}`} />
+                      <span className={`w-1.5 h-1.5 rounded-full transition-all ${isSelected ? config.dotClass : 'bg-zinc-700'}`} />
                       <span>{config.label}</span>
                     </button>
                   );
@@ -3083,7 +3077,7 @@ export default function App() {
                     </span>
                   )}
                   {isDictationMode && (
-                    <span className="text-xs font-sans text-amber-400/90 bg-amber-400/10 px-2.5 py-0.5 rounded-full font-medium">
+                    <span className="text-xs font-sans text-amber-400/90 bg-amber-400/10 px-2.5 py-0.5 rounded-full font-medium opacity-60">
                       听写连对: {currentWord.dictation_correct_streak || 0} / 5
                     </span>
                   )}
