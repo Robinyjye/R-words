@@ -3016,6 +3016,7 @@ export default function App() {
                     }
                     setCurrentWord(selectedWord);
                     setInput('');
+                    speakWordAndExample(selectedWord.word, selectedWord.example_sentence);
                   }}
                 />
               </div>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ArrowLeftRight, Loader2, Sparkles, Database } from 'lucide-react';
+import { ArrowLeftRight, Loader2, Sparkles, Database, Volume2 } from 'lucide-react';
 import { WordState } from '../utils/word';
 import { findSynonymsAndAntonymsInLibrary, fetchDatamuseSynAnt } from '../utils/thesaurus';
+import { speakWordAndExample } from '../utils/audio';
 
 interface SynonymAntonymPopoverProps {
   currentWord: WordState | null;
@@ -50,6 +51,17 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
     return findSynonymsAndAntonymsInLibrary(currentWord, allWords, apiData);
   }, [currentWord, allWords, apiData]);
 
+  // Map of root_core -> root_meaning across all words for comprehensive lookups
+  const rootMeaningsMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const w of allWords) {
+      if (w.root_core && w.root_meaning) {
+        map.set(w.root_core.toLowerCase().trim(), w.root_meaning.trim());
+      }
+    }
+    return map;
+  }, [allWords]);
+
   const handleMouseEnter = () => {
     if (leaveTimerRef.current) {
       clearTimeout(leaveTimerRef.current);
@@ -89,7 +101,7 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
       {/* Floating Hover Card - positioned on the right and shifted downward so it stays below the main word */}
       {isOpen && (
         <div 
-          className="absolute left-full top-[-6px] ml-3.5 w-72 sm:w-80 z-50 animate-in fade-in zoom-in-95 duration-150 pointer-events-auto"
+          className="absolute left-full top-[-6px] ml-3.5 w-76 sm:w-88 z-50 animate-in fade-in zoom-in-95 duration-150 pointer-events-auto"
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
@@ -132,27 +144,47 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
 
               {searchResult.synonyms.length > 0 ? (
                 <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                  {searchResult.synonyms.map((item) => (
-                    <div
-                      key={item.id}
-                      onClick={() => onSelectWord && onSelectWord(item)}
-                      className={`flex items-baseline gap-2 p-1.5 rounded-lg bg-zinc-800/60 hover:bg-emerald-500/10 border border-zinc-700/40 hover:border-emerald-500/30 transition-all ${
-                        onSelectWord ? 'cursor-pointer group/item' : ''
-                      }`}
-                    >
-                      <span className="font-mono font-bold text-white group-hover/item:text-emerald-300 shrink-0">
-                        {item.word}
-                      </span>
-                      {item.part_of_speech && (
-                        <span className="text-[10px] font-mono text-emerald-400/80 shrink-0">
-                          {item.part_of_speech}
+                  {searchResult.synonyms.map((item) => {
+                    const rootMeaning = item.root_meaning || (item.root_core ? rootMeaningsMap.get(item.root_core.toLowerCase().trim()) : '') || '';
+
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => {
+                          speakWordAndExample(item.word, item.example_sentence);
+                        }}
+                        className="flex items-baseline gap-2 p-1.5 rounded-lg bg-zinc-800/60 hover:bg-emerald-500/10 border border-zinc-700/40 hover:border-emerald-500/30 transition-all cursor-pointer group/item"
+                        title="点击朗读单词和例句"
+                      >
+                        <span className="font-mono font-bold text-white group-hover/item:text-emerald-300 shrink-0">
+                          {item.word}
                         </span>
-                      )}
-                      <span className="text-zinc-300 text-[11px] flex-1">
-                        {item.meaning}
-                      </span>
-                    </div>
-                  ))}
+                        {item.part_of_speech && (
+                          <span className="text-[10px] font-mono text-emerald-400/80 shrink-0">
+                            {item.part_of_speech}
+                          </span>
+                        )}
+                        <span className="text-zinc-300 text-[11px] flex-1 truncate">
+                          {item.meaning}
+                        </span>
+
+                        {/* Root tag with title showing root meaning */}
+                        {item.root_core && (
+                          <span
+                            className="inline-flex items-center font-mono text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 shrink-0 font-medium cursor-default"
+                            title={rootMeaning || undefined}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                            }}
+                          >
+                            {item.root_core}
+                          </span>
+                        )}
+
+                        <Volume2 size={12} className="text-zinc-600 group-hover/item:text-emerald-400 shrink-0 self-center transition-colors" />
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="px-2 py-1 rounded bg-zinc-950/40 border border-zinc-800/50 text-zinc-400 text-xs italic">
@@ -177,27 +209,47 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
 
               {searchResult.antonyms.length > 0 ? (
                 <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                  {searchResult.antonyms.map((item) => (
-                    <div
-                      key={item.id}
-                      onClick={() => onSelectWord && onSelectWord(item)}
-                      className={`flex items-baseline gap-2 p-1.5 rounded-lg bg-zinc-800/60 hover:bg-rose-500/10 border border-zinc-700/40 hover:border-rose-500/30 transition-all ${
-                        onSelectWord ? 'cursor-pointer group/item' : ''
-                      }`}
-                    >
-                      <span className="font-mono font-bold text-white group-hover/item:text-rose-300 shrink-0">
-                        {item.word}
-                      </span>
-                      {item.part_of_speech && (
-                        <span className="text-[10px] font-mono text-rose-400/80 shrink-0">
-                          {item.part_of_speech}
+                  {searchResult.antonyms.map((item) => {
+                    const rootMeaning = item.root_meaning || (item.root_core ? rootMeaningsMap.get(item.root_core.toLowerCase().trim()) : '') || '';
+
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => {
+                          speakWordAndExample(item.word, item.example_sentence);
+                        }}
+                        className="flex items-baseline gap-2 p-1.5 rounded-lg bg-zinc-800/60 hover:bg-rose-500/10 border border-zinc-700/40 hover:border-rose-500/30 transition-all cursor-pointer group/item"
+                        title="点击朗读单词和例句"
+                      >
+                        <span className="font-mono font-bold text-white group-hover/item:text-rose-300 shrink-0">
+                          {item.word}
                         </span>
-                      )}
-                      <span className="text-zinc-300 text-[11px] flex-1">
-                        {item.meaning}
-                      </span>
-                    </div>
-                  ))}
+                        {item.part_of_speech && (
+                          <span className="text-[10px] font-mono text-rose-400/80 shrink-0">
+                            {item.part_of_speech}
+                          </span>
+                        )}
+                        <span className="text-zinc-300 text-[11px] flex-1 truncate">
+                          {item.meaning}
+                        </span>
+
+                        {/* Root tag with title showing root meaning */}
+                        {item.root_core && (
+                          <span
+                            className="inline-flex items-center font-mono text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 shrink-0 font-medium cursor-default"
+                            title={rootMeaning || undefined}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                            }}
+                          >
+                            {item.root_core}
+                          </span>
+                        )}
+
+                        <Volume2 size={12} className="text-zinc-600 group-hover/item:text-rose-400 shrink-0 self-center transition-colors" />
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="px-2 py-1 rounded bg-zinc-950/40 border border-zinc-800/50 text-zinc-400 text-xs italic">
@@ -212,9 +264,10 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
                 <Sparkles size={10} className="text-sky-400" />
                 <span>支持中英文义与同义词林检索</span>
               </span>
-              {onSelectWord && (
-                <span className="text-zinc-400">点击结果可切换单词</span>
-              )}
+              <span className="text-zinc-400 flex items-center gap-1">
+                <Volume2 size={10} className="text-zinc-400" />
+                <span>点击单词朗读单词和例句</span>
+              </span>
             </div>
           </div>
         </div>
