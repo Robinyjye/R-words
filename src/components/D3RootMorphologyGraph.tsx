@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useMemo, useState } from 'react';
 import * as d3 from 'd3';
-import { Volume2, ArrowRight, Sparkles, ZoomIn, ZoomOut, RotateCcw, Maximize2, Layers } from 'lucide-react';
+import { Volume2, ArrowRight, Sparkles, ZoomIn, ZoomOut, RotateCcw, Maximize2, Layers, BookOpen } from 'lucide-react';
 import { WordState } from '../utils/word';
 import { speakWord, speakWordAndExample } from '../utils/audio';
 
@@ -23,7 +23,62 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
   const svgRef = useRef<SVGSVGElement>(null);
   const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const [hoveredWordId, setHoveredWordId] = useState<string | null>(null);
-  const [selectedWord, setSelectedWord] = useState<WordState | null>(null);
+  const [selectedWordId, setSelectedWordId] = useState<string>(() => {
+    return currentWordId || words[0]?.id || '';
+  });
+
+  // Keep selectedWordId in sync with currentWordId or words
+  useEffect(() => {
+    if (currentWordId && words.some(w => w.id === currentWordId)) {
+      setSelectedWordId(currentWordId);
+    } else if (words.length > 0 && !words.some(w => w.id === selectedWordId)) {
+      setSelectedWordId(words[0].id);
+    }
+  }, [currentWordId, words]);
+
+  const selectedWord = useMemo(() => {
+    return words.find(w => w.id === selectedWordId) || words[0] || null;
+  }, [words, selectedWordId]);
+
+  // Handle ArrowDown (select next word) and ArrowUp (select previous word)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (words.length === 0) return;
+        const currentIndex = words.findIndex(w => w.id === selectedWordId);
+        const nextIndex = currentIndex < words.length - 1 ? currentIndex + 1 : 0;
+        setSelectedWordId(words[nextIndex].id);
+        setHoveredWordId(null);
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (words.length === 0) return;
+        const currentIndex = words.findIndex(w => w.id === selectedWordId);
+        const prevIndex = currentIndex > 0 ? currentIndex - 1 : words.length - 1;
+        setSelectedWordId(words[prevIndex].id);
+        setHoveredWordId(null);
+        return;
+      }
+
+      if (e.key === 'Enter' && selectedWord) {
+        e.preventDefault();
+        e.stopPropagation();
+        onSelectWord(selectedWord);
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [words, selectedWordId, selectedWord, onSelectWord]);
 
   // Clean root core
   const cleanRoot = useMemo(() => {
@@ -77,27 +132,27 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
     svg.selectAll('*').remove();
 
     // Node Dimensions
-    const prefixW = 94;
-    const prefixH = 42;
+    const prefixW = 96;
+    const prefixH = 44;
 
-    const rootW = 126;
-    const rootH = 54;
+    const rootW = 130;
+    const rootH = 56;
 
-    const suffixW = 106;
-    const suffixH = 42;
+    const suffixW = 108;
+    const suffixH = 44;
 
-    const wordW = 224;
-    const wordH = 50;
+    const wordW = 232;
+    const wordH = 52;
 
     const hasAnyPrefix = morphologyData.some(d => d.prefix);
 
     // Dynamic horizontal spacing based on container width
-    const colPrefixX = hasAnyPrefix ? 58 : 0;
-    const colRootX = hasAnyPrefix ? 200 : 88;
-    const colSuffixX = hasAnyPrefix ? 356 : 265;
-    const colWordX = hasAnyPrefix ? 560 : 475;
+    const colPrefixX = hasAnyPrefix ? 60 : 0;
+    const colRootX = hasAnyPrefix ? 204 : 90;
+    const colSuffixX = hasAnyPrefix ? 362 : 270;
+    const colWordX = hasAnyPrefix ? 570 : 485;
 
-    const graphWidth = Math.max(containerWidth, hasAnyPrefix ? 695 : 610);
+    const graphWidth = Math.max(containerWidth, hasAnyPrefix ? 710 : 625);
 
     svg
       .attr('viewBox', `0 0 ${graphWidth} ${graphHeight}`)
@@ -275,7 +330,9 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
 
     morphologyData.forEach((d, idx) => {
       const rowY = rowYList[idx];
-      const isHighlighted = hoveredWordId === d.id;
+      const isSelected = selectedWordId === d.id;
+      const isHovered = hoveredWordId === d.id;
+      const isHighlighted = hoveredWordId ? isHovered : isSelected;
 
       // Distributed anchor on Root's right edge (so lines never crowd into a single point!)
       const spreadFactor = count > 1 ? (idx - (count - 1) / 2) / ((count - 1) / 2) : 0;
@@ -301,7 +358,7 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
           .attr('fill', 'none')
           .attr('stroke', isHighlighted ? '#38bdf8' : '#38bdf8')
           .attr('stroke-width', isHighlighted ? 2.2 : 1.4)
-          .attr('stroke-opacity', isHighlighted ? 1 : hoveredWordId ? 0.25 : 0.65)
+          .attr('stroke-opacity', isHighlighted ? 1 : (hoveredWordId || selectedWordId) ? 0.3 : 0.65)
           .attr('stroke-dasharray', '3,3')
           .attr('marker-end', isHighlighted ? 'url(#arrow-sky)' : 'url(#arrow-sky)');
       }
@@ -326,7 +383,7 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
           .attr('fill', 'none')
           .attr('stroke', isHighlighted ? '#60a5fa' : '#3b82f6')
           .attr('stroke-width', isHighlighted ? 2.5 : 1.6)
-          .attr('stroke-opacity', isHighlighted ? 1 : hoveredWordId ? 0.25 : 0.75)
+          .attr('stroke-opacity', isHighlighted ? 1 : (hoveredWordId || selectedWordId) ? 0.3 : 0.75)
           .attr('marker-end', isHighlighted ? 'url(#arrow-blue)' : 'url(#arrow-blue)');
 
         // Suffix -> Word (Horizontal direct link)
@@ -343,8 +400,8 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
           .attr('x2', wTargetX)
           .attr('y2', wTargetY)
           .attr('stroke', isHighlighted ? '#34d399' : '#10b981')
-          .attr('stroke-width', isHighlighted ? 2.2 : 1.5)
-          .attr('stroke-opacity', isHighlighted ? 1 : hoveredWordId ? 0.25 : 0.7)
+          .attr('stroke-width', isHighlighted ? 2.4 : 1.5)
+          .attr('stroke-opacity', isHighlighted ? 1 : (hoveredWordId || selectedWordId) ? 0.3 : 0.7)
           .attr('marker-end', isHighlighted ? 'url(#arrow-active)' : 'url(#arrow-emerald)');
       } else {
         // Direct Root -> Word
@@ -363,7 +420,7 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
           .attr('fill', 'none')
           .attr('stroke', isHighlighted ? '#34d399' : '#10b981')
           .attr('stroke-width', isHighlighted ? 2.5 : 1.6)
-          .attr('stroke-opacity', isHighlighted ? 1 : hoveredWordId ? 0.25 : 0.75)
+          .attr('stroke-opacity', isHighlighted ? 1 : (hoveredWordId || selectedWordId) ? 0.3 : 0.75)
           .attr('marker-end', isHighlighted ? 'url(#arrow-active)' : 'url(#arrow-emerald)');
       }
     });
@@ -391,12 +448,12 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
     // Pill Tag: 核心词根
     rootG
       .append('rect')
-      .attr('x', -27)
-      .attr('y', -rootH / 2 - 9)
-      .attr('width', 54)
-      .attr('height', 17)
-      .attr('rx', 8.5)
-      .attr('ry', 8.5)
+      .attr('x', -29)
+      .attr('y', -rootH / 2 - 9.5)
+      .attr('width', 58)
+      .attr('height', 18)
+      .attr('rx', 9)
+      .attr('ry', 9)
       .attr('fill', '#172554')
       .attr('stroke', '#93c5fd')
       .attr('stroke-width', 1);
@@ -404,9 +461,9 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
     rootG
       .append('text')
       .attr('text-anchor', 'middle')
-      .attr('y', -rootH / 2 + 3)
+      .attr('y', -rootH / 2 + 3.5)
       .attr('fill', '#dbeafe')
-      .attr('font-size', '9.5px')
+      .attr('font-size', '11px')
       .attr('font-weight', 'bold')
       .attr('font-family', 'sans-serif')
       .text('核心词根');
@@ -415,9 +472,9 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
     rootG
       .append('text')
       .attr('text-anchor', 'middle')
-      .attr('y', rootMeaning ? -2 : 5)
+      .attr('y', rootMeaning ? -3 : 6)
       .attr('fill', '#ffffff')
-      .attr('font-size', '16px')
+      .attr('font-size', '19px')
       .attr('font-weight', 'bold')
       .attr('font-family', 'ui-monospace, monospace')
       .text(cleanRoot);
@@ -427,9 +484,9 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
       rootG
         .append('text')
         .attr('text-anchor', 'middle')
-        .attr('y', 16)
+        .attr('y', 17)
         .attr('fill', '#bfdbfe')
-        .attr('font-size', '13px')
+        .attr('font-size', '15px')
         .attr('font-weight', '500')
         .attr('font-family', 'sans-serif')
         .text(rootMeaning.length > 8 ? rootMeaning.slice(0, 7) + '..' : rootMeaning);
@@ -440,8 +497,9 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
 
     morphologyData.forEach((d, idx) => {
       const rowY = rowYList[idx];
-      const isCurrent = d.id === currentWordId;
-      const isHighlighted = hoveredWordId === d.id;
+      const isSelected = selectedWordId === d.id;
+      const isHovered = hoveredWordId === d.id;
+      const isHighlighted = hoveredWordId ? isHovered : isSelected;
 
       // === Prefix Node ===
       if (d.prefix) {
@@ -468,9 +526,9 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
         prefixG
           .append('text')
           .attr('text-anchor', 'middle')
-          .attr('y', d.prefixMeaning ? -3 : 5)
+          .attr('y', d.prefixMeaning ? -4 : 6)
           .attr('fill', '#38bdf8')
-          .attr('font-size', '14px')
+          .attr('font-size', '16.5px')
           .attr('font-weight', 'bold')
           .attr('font-family', 'ui-monospace, monospace')
           .text(d.prefix);
@@ -479,9 +537,9 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
           prefixG
             .append('text')
             .attr('text-anchor', 'middle')
-            .attr('y', 13)
+            .attr('y', 14)
             .attr('fill', '#94a3b8')
-            .attr('font-size', '12px')
+            .attr('font-size', '14px')
             .attr('font-family', 'sans-serif')
             .text(d.prefixMeaning.length > 7 ? d.prefixMeaning.slice(0, 6) + '..' : d.prefixMeaning);
         }
@@ -512,9 +570,9 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
         suffixG
           .append('text')
           .attr('text-anchor', 'middle')
-          .attr('y', d.suffixMeaning ? -3 : 5)
+          .attr('y', d.suffixMeaning ? -4 : 6)
           .attr('fill', '#ffffff')
-          .attr('font-size', '14px')
+          .attr('font-size', '16.5px')
           .attr('font-weight', 'bold')
           .attr('font-family', 'ui-monospace, monospace')
           .text(d.suffix);
@@ -523,9 +581,9 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
           suffixG
             .append('text')
             .attr('text-anchor', 'middle')
-            .attr('y', 13)
+            .attr('y', 14)
             .attr('fill', '#bfdbfe')
-            .attr('font-size', '12px')
+            .attr('font-size', '14px')
             .attr('font-family', 'sans-serif')
             .text(d.suffixMeaning.length > 7 ? d.suffixMeaning.slice(0, 6) + '..' : d.suffixMeaning);
         }
@@ -540,7 +598,7 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
         .on('mouseenter', () => setHoveredWordId(d.id))
         .on('mouseleave', () => setHoveredWordId(null))
         .on('click', () => {
-          setSelectedWord(d.wordItem);
+          setSelectedWordId(d.id);
           speakWordAndExample(d.word, d.wordItem.example_sentence);
         });
 
@@ -553,19 +611,19 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
         .attr('height', wordH)
         .attr('rx', 8.5)
         .attr('ry', 8.5)
-        .attr('fill', isCurrent ? 'url(#wordActiveGrad)' : 'url(#wordLinearGrad)')
-        .attr('stroke', isHighlighted ? '#34d399' : isCurrent ? '#818cf8' : '#27272a')
-        .attr('stroke-width', isHighlighted ? 2 : isCurrent ? 1.6 : 1);
+        .attr('fill', isSelected ? 'url(#wordActiveGrad)' : 'url(#wordLinearGrad)')
+        .attr('stroke', isHighlighted ? '#34d399' : isSelected ? '#818cf8' : '#27272a')
+        .attr('stroke-width', isHighlighted ? 2.4 : isSelected ? 1.8 : 1);
 
       // Line 1: Word + Part of speech (Phonetic removed as requested)
       const textGroup = wordG.append('g').attr('transform', `translate(${-wordW / 2 + 12}, 0)`);
 
-      // Word Title (15px)
+      // Word Title (17.5px)
       textGroup
         .append('text')
         .attr('y', -7)
-        .attr('fill', isHighlighted ? '#a7f3d0' : '#ffffff')
-        .attr('font-size', '15px')
+        .attr('fill', isHighlighted ? '#a7f3d0' : isSelected ? '#e0e7ff' : '#ffffff')
+        .attr('font-size', '17.5px')
         .attr('font-weight', 'bold')
         .attr('font-family', 'ui-monospace, monospace')
         .text(d.word);
@@ -574,21 +632,21 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
       if (d.part_of_speech) {
         textGroup
           .append('text')
-          .attr('x', d.word.length * 9.2 + 6)
+          .attr('x', d.word.length * 10.5 + 6)
           .attr('y', -7)
           .attr('fill', '#94a3b8')
-          .attr('font-size', '11.5px')
+          .attr('font-size', '13.5px')
           .attr('font-family', 'ui-monospace, monospace')
           .text(d.part_of_speech);
       }
 
-      // Line 2: Meaning (Chinese font size increased to 13px)
+      // Line 2: Meaning (Chinese font size increased to 15px)
       if (d.meaning) {
         textGroup
           .append('text')
-          .attr('y', 13)
+          .attr('y', 14)
           .attr('fill', isHighlighted ? '#34d399' : '#10b981')
-          .attr('font-size', '13px')
+          .attr('font-size', '15px')
           .attr('font-weight', '500')
           .attr('font-family', 'sans-serif')
           .text(d.meaning.length > 15 ? d.meaning.slice(0, 14) + '...' : d.meaning);
@@ -606,7 +664,7 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
 
       speakerBtn
         .append('circle')
-        .attr('r', 11)
+        .attr('r', 11.5)
         .attr('fill', isHighlighted ? '#18181b' : '#27272a')
         .attr('stroke', isHighlighted ? '#10b981' : '#3f3f46')
         .attr('stroke-width', 0.8);
@@ -614,8 +672,8 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
       speakerBtn
         .append('text')
         .attr('text-anchor', 'middle')
-        .attr('y', 3.5)
-        .attr('font-size', '9.5px')
+        .attr('y', 4)
+        .attr('font-size', '11px')
         .text('🔊');
     });
 
@@ -623,7 +681,7 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
     const fitScale = Math.min(1.05, (containerWidth - 20) / graphWidth);
     const initialTransform = d3.zoomIdentity.scale(fitScale).translate(10, 5);
     svg.call(zoom.transform, initialTransform);
-  }, [morphologyData, cleanRoot, rootMeaning, currentWordId, hoveredWordId]);
+  }, [morphologyData, cleanRoot, rootMeaning, currentWordId, hoveredWordId, selectedWordId]);
 
   // Zoom controls
   const handleZoom = (factor: number) => {
@@ -641,6 +699,17 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
       .duration(250)
       .call(zoomBehaviorRef.current.transform, d3.zoomIdentity);
   };
+
+  const isHovering = Boolean(hoveredWordId);
+
+  // Active word to show in the right-side detail panel (hovered or selected)
+  const activeWord = useMemo(() => {
+    if (hoveredWordId) {
+      const found = words.find(w => w.id === hoveredWordId);
+      if (found) return found;
+    }
+    return selectedWord;
+  }, [hoveredWordId, selectedWord]);
 
   return (
     <div className="space-y-2.5">
@@ -693,56 +762,169 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
         </div>
       </div>
 
-      {/* SVG Canvas Area */}
-      <div
-        ref={containerRef}
-        className="relative bg-zinc-950/95 border border-zinc-800/90 rounded-2xl overflow-hidden shadow-2xl min-h-[280px] flex items-center justify-center"
-      >
-        <svg ref={svgRef} className="block w-full h-full select-none" />
+      {/* Main Content Area: Diagram on the Left, Word & Example Details on the Right (No Obstruction!) */}
+      <div className="flex flex-col lg:flex-row items-stretch gap-3.5">
+        {/* Left: SVG Canvas Area */}
+        <div
+          ref={containerRef}
+          className="flex-1 min-w-0 relative bg-zinc-950/95 border border-zinc-800/90 rounded-2xl overflow-hidden shadow-2xl min-h-[340px] flex items-center justify-center"
+        >
+          <svg ref={svgRef} className="block w-full h-full select-none" />
 
-        {/* Hint text */}
-        <div className="absolute bottom-2 left-3 text-[10px] text-zinc-600 font-mono pointer-events-none select-none">
-          可平移缩放 · 悬浮高亮链路 · 点击单词发音
+          {/* Hint text */}
+          <div className="absolute bottom-2 left-3 text-[10px] text-zinc-500 font-mono pointer-events-none select-none flex items-center gap-1.5 flex-wrap">
+            <span>可平移缩放</span>
+            <span>·</span>
+            <span className="text-indigo-300 font-semibold bg-indigo-500/15 px-1.5 py-0.5 rounded border border-indigo-500/30">↑ / ↓ 切换选择单词</span>
+            <span>·</span>
+            <span>Enter 切换学习</span>
+            <span>·</span>
+            <span>点击单词发音</span>
+          </div>
+        </div>
+
+        {/* Right: Dedicated Word & Example Sentence Panel (Permanent Right-Side Display with Zero Obstruction) */}
+        <div
+          className={`w-full lg:w-80 shrink-0 rounded-2xl p-4 flex flex-col justify-between shadow-2xl transition-all duration-200 border ${
+            isHovering
+              ? 'border-indigo-500/70 ring-1 ring-indigo-500/40 bg-zinc-900/90'
+              : 'border-zinc-800/90 bg-zinc-900/60'
+          }`}
+        >
+          {activeWord ? (
+            <div className="space-y-3.5 flex-1 flex flex-col justify-between">
+              {/* Top: Header & Badges */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80">
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                    <BookOpen size={13} className="text-indigo-400" />
+                    <span className="font-semibold text-zinc-300">单词与例句详解</span>
+                  </div>
+                  {isHovering ? (
+                    <span className="text-[10px] text-indigo-300 font-mono bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 rounded-full animate-pulse">
+                      悬浮预览
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800/80 px-2 py-0.5 rounded border border-zinc-700/50">
+                      ↑ / ↓ 切换
+                    </span>
+                  )}
+                </div>
+
+                {/* Word, Phonetic, Meaning */}
+                <div className="space-y-1">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="font-mono font-bold text-white text-lg">
+                      {activeWord.word}
+                    </span>
+                    {activeWord.phonetic && (
+                      <span className="text-xs text-zinc-400 font-mono">
+                        {activeWord.phonetic}
+                      </span>
+                    )}
+                    {activeWord.part_of_speech && (
+                      <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
+                        {activeWord.part_of_speech}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-sm text-emerald-400 font-medium">
+                    {activeWord.meaning}
+                  </div>
+                </div>
+
+                {/* Example Sentence Box */}
+                <div className="bg-zinc-950/70 rounded-xl p-3 border border-zinc-800/80 space-y-2">
+                  <div className="flex items-center justify-between text-xs text-indigo-300 font-medium">
+                    <span className="flex items-center gap-1">
+                      <Sparkles size={11} className="text-indigo-400" />
+                      例句 (Example Sentence)
+                    </span>
+                    {activeWord.example_sentence && (
+                      <button
+                        type="button"
+                        onClick={() => speakWord(activeWord.example_sentence!)}
+                        className="p-1 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors"
+                        title="朗读例句"
+                      >
+                        <Volume2 size={13} />
+                      </button>
+                    )}
+                  </div>
+
+                  {activeWord.example_sentence ? (
+                    <p className="text-xs text-zinc-200 italic leading-relaxed pl-2 border-l-2 border-indigo-500/60">
+                      "{activeWord.example_sentence}"
+                    </p>
+                  ) : (
+                    <p className="text-xs text-zinc-500 italic py-1">
+                      暂无例句数据
+                    </p>
+                  )}
+
+                  {activeWord.phrase && (
+                    <div className="pt-2 border-t border-zinc-800/60 text-xs text-emerald-400/90 font-medium flex items-start gap-1.5">
+                      <span className="text-zinc-500 text-[11px] shrink-0">常用搭配:</span>
+                      <span className="break-words">{activeWord.phrase}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Affix Breakdown */}
+                {(activeWord.prefix || activeWord.root_core || activeWord.suffix) && (
+                  <div className="text-[11px] font-mono text-zinc-400 bg-zinc-950/50 p-2.5 rounded-xl border border-zinc-800/60 flex flex-wrap items-center gap-1">
+                    <span className="text-zinc-500 text-[10px]">构词:</span>
+                    {activeWord.prefix && (
+                      <span className="text-sky-400">
+                        {activeWord.prefix}
+                        {activeWord.prefix_meaning ? ` (${activeWord.prefix_meaning})` : ''}
+                      </span>
+                    )}
+                    {activeWord.prefix && (activeWord.root_core || activeWord.suffix) && <span className="text-zinc-600">+</span>}
+                    {activeWord.root_core && (
+                      <span className="text-indigo-300 font-bold bg-indigo-500/10 px-1 py-0.2 rounded border border-indigo-500/20">
+                        {activeWord.root_core}
+                        {activeWord.root_meaning ? ` (${activeWord.root_meaning})` : ''}
+                      </span>
+                    )}
+                    {activeWord.root_core && activeWord.suffix && <span className="text-zinc-600">+</span>}
+                    {activeWord.suffix && (
+                      <span className="text-purple-400">
+                        {activeWord.suffix}
+                        {activeWord.suffix_meaning ? ` (${activeWord.suffix_meaning})` : ''}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Bottom Actions */}
+              <div className="pt-3 border-t border-zinc-800/80 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => speakWordAndExample(activeWord.word, activeWord.example_sentence)}
+                  className="p-2 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded-xl transition-colors border border-zinc-800 flex items-center justify-center shrink-0"
+                  title="朗读单词及例句"
+                >
+                  <Volume2 size={16} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSelectWord(activeWord)}
+                  className="flex-1 py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+                >
+                  <span>切换学习该词</span>
+                  <ArrowRight size={13} />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="py-12 text-center text-zinc-500 text-xs">
+              悬浮或点击拓扑图中的单词以查看例句详解
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Selected Word Quick Action Bar */}
-      {selectedWord && (
-        <div className="p-2.5 px-3.5 bg-zinc-900/80 border border-zinc-800 rounded-2xl flex items-center justify-between gap-3 animate-in fade-in duration-150 text-xs">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="font-mono font-bold text-white text-sm">
-              {selectedWord.word}
-            </span>
-            {selectedWord.phonetic && (
-              <span className="text-[11px] text-zinc-500 font-mono">
-                {selectedWord.phonetic}
-              </span>
-            )}
-            <span className="text-[11px] text-emerald-400 font-medium truncate max-w-sm">
-              {selectedWord.meaning}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => speakWordAndExample(selectedWord.word, selectedWord.example_sentence)}
-              className="p-1 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors"
-              title="朗读单词及例句"
-            >
-              <Volume2 size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => onSelectWord(selectedWord)}
-              className="px-2.5 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition-all flex items-center gap-1 active:scale-95"
-            >
-              <span>切换学习</span>
-              <ArrowRight size={11} />
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

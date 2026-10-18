@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { ArrowLeftRight, Loader2, Sparkles, Database, Volume2 } from 'lucide-react';
+import { ArrowLeftRight, Loader2, Sparkles, Volume2 } from 'lucide-react';
 import { WordState } from '../utils/word';
 import { findSynonymsAndAntonymsInLibrary, fetchDatamuseSynAnt } from '../utils/thesaurus';
 import { speakWordAndExample } from '../utils/audio';
@@ -132,8 +132,7 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = React
             ? 'text-sky-400 bg-sky-400/15 ring-1 ring-sky-400/40'
             : 'text-zinc-500 hover:text-sky-400 hover:bg-sky-400/10'
         }`}
-        title="近义词与反义词检索 (快捷键: Shift)"
-        aria-label="在全部词库搜索近义词和反义词 (快捷键: Shift)"
+        aria-label="在全部词库搜索近义词和反义词"
       >
         <ArrowLeftRight size={14} />
       </button>
@@ -151,19 +150,18 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = React
 
           <div className="relative bg-zinc-900 border border-zinc-700/70 rounded-2xl shadow-2xl p-3.5 text-left text-xs text-zinc-100 ring-1 ring-white/5">
             {/* Header */}
-            <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-zinc-800">
-              <div className="flex items-center gap-1.5 font-medium text-zinc-200">
+            <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-zinc-800 gap-2">
+              <div className="flex items-center gap-1.5 font-medium text-zinc-200 min-w-0">
                 <ArrowLeftRight size={13} className="text-sky-400 shrink-0" />
-                <span>近义词与反义词检索</span>
-                <span className="font-mono text-sky-300 font-bold ml-0.5">
+                <span className="whitespace-nowrap">近义词与反义词检索</span>
+                <span className="font-mono text-sky-300 font-bold ml-0.5 truncate">
                   [{currentWord.word}]
                 </span>
+                {isLoadingApi && <Loader2 size={10} className="animate-spin text-sky-400 ml-1 shrink-0" />}
               </div>
-              <div className="flex items-center gap-1 text-[10px] text-zinc-400 font-mono bg-zinc-800/80 px-2 py-0.5 rounded-full border border-zinc-700/50">
-                <Database size={10} className="text-zinc-400 shrink-0" />
-                <span>词库 {allWords.length}</span>
-                {isLoadingApi && <Loader2 size={9} className="animate-spin text-sky-400 ml-0.5" />}
-              </div>
+              <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800/80 px-1.5 py-0.5 rounded border border-zinc-700/50 whitespace-nowrap shrink-0">
+                Shift 切换
+              </span>
             </div>
 
             {/* Synonyms Section */}

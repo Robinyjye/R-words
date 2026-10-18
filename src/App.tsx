@@ -1639,6 +1639,27 @@ export default function App() {
         return;
       }
 
+      // Handle Ctrl key to enter/toggle root association page (词根关联页面)
+      if (e.key === 'Control' || e.code === 'ControlLeft' || e.code === 'ControlRight') {
+        e.preventDefault();
+        if (selectedRootInfo) {
+          setSelectedRootInfo(null);
+          return;
+        }
+        if (currentWord.root_core) {
+          setSelectedRootInfo({
+            rootCore: currentWord.root_core,
+            rootMeaning: currentWord.root_meaning,
+          });
+        } else {
+          showToast(`当前单词 "${currentWord.word}" 暂无词根数据`);
+        }
+        return;
+      }
+
+      // If root association modal is open, don't handle background study navigation
+      if (selectedRootInfo) return;
+
       // Ignore modifier keys
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
@@ -1715,7 +1736,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip, isGameMode, handleDictationPeekRoot, handleDictationSpaceReveal, handleSetConfidence, isThesaurusOpen]);
+  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip, isGameMode, handleDictationPeekRoot, handleDictationSpaceReveal, handleSetConfidence, isThesaurusOpen, selectedRootInfo, showToast]);
 
   // Check for completion
   useEffect(() => {
@@ -2905,7 +2926,7 @@ export default function App() {
                           });
                         }}
                         className="relative inline-flex items-center gap-1 px-2.5 py-0.5 mr-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 hover:text-indigo-200 transition-all cursor-pointer group shadow-sm text-sm font-mono select-none"
-                        title={`该词根共收录 ${currentWordSameRootCount} 个单词，点击查看完整列表`}
+                        title={`该词根共收录 ${currentWordSameRootCount} 个单词，点击或按 Ctrl 键进入构词关联图`}
                       >
                         <Sparkles size={11} className="text-indigo-400 group-hover:scale-110 transition-transform" />
                         <span className="font-bold underline decoration-indigo-400/50 underline-offset-2">
