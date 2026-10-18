@@ -625,6 +625,14 @@ export default function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Synonym & Antonym popover open state (toggled via Shift key, icon hover, or click)
+  const [isThesaurusOpen, setIsThesaurusOpen] = useState(false);
+
+  // Close thesaurus popover whenever switching to another word
+  useEffect(() => {
+    setIsThesaurusOpen(false);
+  }, [currentWord?.id]);
+
   // Jump to word selected from dropdown
   const handleSelectWordFromDropdown = useCallback((matchedWord: WordState) => {
     setActiveList(matchedWord.listName || 'Default List');
@@ -1641,26 +1649,6 @@ export default function App() {
         return;
       }
 
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        if (currentWord.phrase) {
-          speakWord(currentWord.phrase);
-        } else {
-          speakWord(currentWord.word);
-        }
-        return;
-      }
-
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        if (currentWord.example_sentence) {
-          speakWord(currentWord.example_sentence);
-        } else {
-          speakWord(currentWord.word);
-        }
-        return;
-      }
-
       if (e.key === 'ArrowRight') {
         e.preventDefault();
         handleSkip();
@@ -1674,6 +1662,20 @@ export default function App() {
         return;
       }
 
+      // Handle Shift key: toggle synonyms and antonyms popover
+      if (e.key === 'Shift') {
+        e.preventDefault();
+        setIsThesaurusOpen(prev => !prev);
+        return;
+      }
+
+      // Close synonyms and antonyms popover on Escape
+      if (e.key === 'Escape' && isThesaurusOpen) {
+        e.preventDefault();
+        setIsThesaurusOpen(false);
+        return;
+      }
+
       // Handle Space: in dictation mode, press Space to remove word and root occlusion!
       if (e.key === ' ' || e.code === 'Space') {
         const targetWord = currentWord.word;
@@ -1684,33 +1686,8 @@ export default function App() {
             handleDictationSpaceReveal();
             return;
           }
-          if (currentWord.phrase) {
-            speakWord(currentWord.phrase);
-          } else {
-            speakWord(currentWord.word);
-          }
           return;
         }
-      }
-
-      // Handle Shift to read example sentence
-      if (e.key === 'Shift') {
-        e.preventDefault();
-        if (currentWord.example_sentence) {
-          speakWord(currentWord.example_sentence);
-        } else if (currentWord.phrase) {
-          speakWord(currentWord.phrase);
-        } else {
-          speakWord(currentWord.word);
-        }
-        return;
-      }
-
-      // Handle PageDown to read word
-      if (e.key === 'PageDown') {
-        e.preventDefault();
-        speakWordAndExample(currentWord.word, currentWord.example_sentence);
-        return;
       }
 
       // Handle letter input (only allow letters and spaces/hyphens if they are in the word)
@@ -1738,7 +1715,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip, isGameMode, handleDictationPeekRoot, handleDictationSpaceReveal, handleSetConfidence]);
+  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip, isGameMode, handleDictationPeekRoot, handleDictationSpaceReveal, handleSetConfidence, isThesaurusOpen]);
 
   // Check for completion
   useEffect(() => {
@@ -3010,6 +2987,8 @@ export default function App() {
                 <SynonymAntonymPopover
                   currentWord={currentWord}
                   allWords={words}
+                  isOpen={isThesaurusOpen}
+                  onOpenChange={setIsThesaurusOpen}
                   onSelectWord={(selectedWord) => {
                     if (selectedWord.listName && selectedWord.listName !== activeList) {
                       setActiveList(selectedWord.listName);
@@ -3093,7 +3072,7 @@ export default function App() {
                       speakWordAndExample(currentWord.word, currentWord.example_sentence);
                     }}
                     className="p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
-                    title="Listen to pronunciation (PageDown)"
+                    title="朗读单词发音"
                     tabIndex={-1}
                   >
                     <Volume2 size={16} />
@@ -3132,7 +3111,7 @@ export default function App() {
                         speakWord(currentWord.phrase!);
                       }}
                       className="p-1 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none"
-                      title="Listen to phrase (Space / ArrowUp)"
+                      title="朗读短语"
                       tabIndex={-1}
                     >
                       <Volume2 size={14} />
@@ -3152,7 +3131,7 @@ export default function App() {
                         speakWord(currentWord.example_sentence!);
                       }}
                       className="mt-1 p-1 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors focus:outline-none flex-shrink-0"
-                      title="Listen to example sentence (Shift / ArrowDown)"
+                      title="朗读例句"
                       tabIndex={-1}
                     >
                       <Volume2 size={18} />

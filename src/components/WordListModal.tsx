@@ -137,6 +137,24 @@ export const WordListModal: React.FC<WordListModalProps> = ({
     });
   }, [tabWords, searchQuery]);
 
+  // Progressive rendering to keep 60fps performance and zero mouse lag
+  const [renderLimit, setRenderLimit] = useState(60);
+
+  useEffect(() => {
+    setRenderLimit(60);
+  }, [searchQuery, activeTab, masteredScope, isOpen]);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight - scrollTop - clientHeight < 400) {
+      setRenderLimit(prev => Math.min(prev + 60, displayedWords.length));
+    }
+  };
+
+  const visibleWords = useMemo(() => {
+    return displayedWords.slice(0, renderLimit);
+  }, [displayedWords, renderLimit]);
+
   // Map of root_core -> root_meaning across all words for comprehensive lookups
   const rootMeaningsMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -462,7 +480,10 @@ export const WordListModal: React.FC<WordListModalProps> = ({
         )}
 
         {/* Word List Content - Compact padding to display as many words as possible */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-2 divide-y divide-zinc-900/60">
+        <div 
+          className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-2 divide-y divide-zinc-900/60"
+          onScroll={handleScroll}
+        >
           {displayedWords.length === 0 ? (
             <div className="text-center py-16 px-4 space-y-3">
               <div className="w-14 h-14 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto text-zinc-500">
@@ -494,266 +515,280 @@ export const WordListModal: React.FC<WordListModalProps> = ({
               </p>
             </div>
           ) : (
-            displayedWords.map((item, index) => {
-              const isMastered = item.is_mastered === true || item.listName === 'Mastered Words';
-              const targetOriginalList = (item.previousListName && item.previousListName !== 'Mastered Words')
-                ? item.previousListName
-                : 'Default List';
-              const isWordRevealed = !hideWord || revealedWordIds.has(item.id);
-              const isMeaningRevealed = hideWord ? true : (showMeanings || revealedIds.has(item.id));
-              const rootMeaning = item.root_meaning || (item.root_core ? rootMeaningsMap.get(item.root_core.toLowerCase().trim()) : '') || '';
+            <>
+              {visibleWords.map((item, index) => {
+                const isMastered = item.is_mastered === true || item.listName === 'Mastered Words';
+                const targetOriginalList = (item.previousListName && item.previousListName !== 'Mastered Words')
+                  ? item.previousListName
+                  : 'Default List';
+                const isWordRevealed = !hideWord || revealedWordIds.has(item.id);
+                const isMeaningRevealed = hideWord ? true : (showMeanings || revealedIds.has(item.id));
+                const rootMeaning = item.root_meaning || (item.root_core ? rootMeaningsMap.get(item.root_core.toLowerCase().trim()) : '') || '';
 
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => {
-                    setActiveWordId(item.id);
-                    speakWordAndExample(item.word, item.example_sentence);
-                  }}
-                  className={`pt-2.5 first:pt-0 p-3.5 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group cursor-pointer active:scale-[0.998] ${
-                    activeWordId === item.id
-                      ? 'bg-zinc-850 border-emerald-500/40 ring-1 ring-emerald-500/30 shadow-lg'
-                      : 'bg-zinc-900/40 border-zinc-855 hover:border-zinc-700/80 hover:bg-zinc-900/80'
-                  }`}
-                >
-                  <div className="space-y-1.5 flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[11px] font-mono text-zinc-600 font-semibold select-none">
-                        #{index + 1}
-                      </span>
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => {
+                      setActiveWordId(item.id);
+                      speakWordAndExample(item.word, item.example_sentence);
+                    }}
+                    className={`pt-2.5 first:pt-0 p-3.5 rounded-2xl border transition-colors duration-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group cursor-pointer [content-visibility:auto] [contain-intrinsic-size:75px] ${
+                      activeWordId === item.id
+                        ? 'bg-zinc-850 border-emerald-500/40 ring-1 ring-emerald-500/30 shadow-lg'
+                        : 'bg-zinc-900/40 border-zinc-855 hover:border-zinc-700/80 hover:bg-zinc-900/80'
+                    }`}
+                  >
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[11px] font-mono text-zinc-600 font-semibold select-none">
+                          #{index + 1}
+                        </span>
 
-                      {/* Word Name (Hidden if hideWord is true and not revealed) */}
-                      {!isWordRevealed ? (
+                        {/* Word Name (Hidden if hideWord is true and not revealed) */}
+                        {!isWordRevealed ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleRevealWord(item.id);
+                            }}
+                            className="px-2.5 py-0.5 rounded-lg bg-zinc-800/90 hover:bg-zinc-700 text-zinc-400 hover:text-amber-300 font-mono text-sm border border-zinc-700/60 transition-colors duration-100 flex items-center gap-1.5 cursor-pointer group shadow-inner"
+                          >
+                            <span className="tracking-widest select-none">••••••••</span>
+                            <span className="text-[10px] text-zinc-500 group-hover:text-amber-300 font-sans">偷看 (空格)</span>
+                          </button>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-base font-bold font-mono text-white group-hover:text-emerald-300 transition-colors tracking-wide">
+                              {item.word}
+                            </span>
+                            {hideWord && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                 e.stopPropagation();
+                                  toggleRevealWord(item.id);
+                                }}
+                                className="text-[10px] text-zinc-500 hover:text-zinc-300 font-sans underline cursor-pointer"
+                              >
+                                遮挡
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {item.phonetic && isWordRevealed && (
+                          <span className="text-xs font-mono text-zinc-500">
+                            {item.phonetic}
+                          </span>
+                        )}
+
+                        {item.part_of_speech && (
+                          <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md border font-semibold ${getPartOfSpeechBadgeClass(item.part_of_speech)}`}>
+                            {item.part_of_speech}
+                          </span>
+                        )}
+
+                        {/* Audio Pronounce Button */}
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            toggleRevealWord(item.id);
+                            speakWordAndExample(item.word, item.example_sentence);
                           }}
-                          className="px-2.5 py-0.5 rounded-lg bg-zinc-800/90 hover:bg-zinc-700 text-zinc-400 hover:text-amber-300 font-mono text-sm border border-zinc-700/60 transition-all flex items-center gap-1.5 cursor-pointer group shadow-inner"
+                          className="p-1 text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors"
                         >
-                          <span className="tracking-widest select-none">••••••••</span>
-                          <span className="text-[10px] text-zinc-500 group-hover:text-amber-300 font-sans">偷看 (空格)</span>
+                          <Volume2 size={14} />
                         </button>
-                      ) : (
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-base font-bold font-mono text-white group-hover:text-emerald-300 transition-colors tracking-wide">
-                            {item.word}
-                          </span>
-                          {hideWord && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleRevealWord(item.id);
-                              }}
-                              className="text-[10px] text-zinc-500 hover:text-zinc-300 font-sans underline cursor-pointer"
-                            >
-                              遮挡
-                            </button>
-                          )}
-                        </div>
-                      )}
 
-                      {item.phonetic && isWordRevealed && (
-                        <span className="text-xs font-mono text-zinc-500">
-                          {item.phonetic}
-                        </span>
-                      )}
-
-                      {item.part_of_speech && (
-                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md border font-semibold ${getPartOfSpeechBadgeClass(item.part_of_speech)}`}>
-                          {item.part_of_speech}
-                        </span>
-                      )}
-
-                      {/* Audio Pronounce Button */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          speakWordAndExample(item.word, item.example_sentence);
-                        }}
-                        className="p-1 text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors"
-                      >
-                        <Volume2 size={14} />
-                      </button>
-
-                      {/* Practice count badge (练习次数) */}
-                      <span
-                        className={`inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full border transition-colors ${
-                          (item.review_count || 0) > 0
-                            ? 'bg-amber-500/10 text-amber-300 border-amber-500/25 font-semibold'
-                            : 'bg-zinc-800/60 text-zinc-500 border-zinc-700/40'
-                        }`}
-                      >
-                        <Clock size={10} className={(item.review_count || 0) > 0 ? 'text-amber-400' : 'text-zinc-500'} />
-                        <span>练习 {item.review_count || 0} 次</span>
-                      </span>
-
-                      {/* Ebbinghaus stage badge */}
-                      {item.ebbinghaus_stage !== undefined && item.ebbinghaus_stage > 0 && (
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-zinc-800/70 text-zinc-300 border border-zinc-700/50">
-                          Stage {item.ebbinghaus_stage}
-                        </span>
-                      )}
-
-                      {/* Confidence Level Badge */}
-                      {item.confidence && (
+                        {/* Practice count badge (练习次数) */}
                         <span
-                          className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md border ${
-                            item.confidence === 'low'
-                              ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
-                              : item.confidence === 'high'
-                              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                              : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                          className={`inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full border transition-colors ${
+                            (item.review_count || 0) > 0
+                              ? 'bg-amber-500/10 text-amber-300 border-amber-500/25 font-semibold'
+                              : 'bg-zinc-800/60 text-zinc-500 border-zinc-700/40'
                           }`}
-                          title={
-                            item.confidence === 'low'
-                              ? '信心度：需强化 (Low) - 艾宾浩斯复习间隔减半 (0.5x)，优先排队安排复习'
-                              : item.confidence === 'high'
-                              ? '信心度：熟记 (High) - 复习间隔延长 (1.75x)'
-                              : '信心度：掌握中 (Med) - 标准复习间隔 (1.0x)'
-                          }
                         >
+                          <Clock size={10} className={(item.review_count || 0) > 0 ? 'text-amber-400' : 'text-zinc-500'} />
+                          <span>练习 {item.review_count || 0} 次</span>
+                        </span>
+
+                        {/* Ebbinghaus stage badge */}
+                        {item.ebbinghaus_stage !== undefined && item.ebbinghaus_stage > 0 && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-zinc-800/70 text-zinc-300 border border-zinc-700/50">
+                            Stage {item.ebbinghaus_stage}
+                          </span>
+                        )}
+
+                        {/* Confidence Level Badge */}
+                        {item.confidence && (
                           <span
-                            className={`w-1.5 h-1.5 rounded-full ${
+                            className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md border ${
                               item.confidence === 'low'
-                                ? 'bg-rose-400'
+                                ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
                                 : item.confidence === 'high'
-                                ? 'bg-emerald-400'
-                                : 'bg-amber-400'
+                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
                             }`}
-                          />
-                          <span>
-                            {item.confidence === 'low' ? '需强化' : item.confidence === 'high' ? '熟记' : '掌握中'}
-                          </span>
-                        </span>
-                      )}
-
-                      {/* Mastered status badge */}
-                      {isMastered && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
-                          <CheckCircle2 size={10} />
-                          已掌握
-                        </span>
-                      )}
-
-                      {/* Affix / Root tags preview with hover meaning tooltip */}
-                      {item.root_core && isWordRevealed && (
-                        <div 
-                          className="relative group/root inline-flex items-center"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <span 
-                            className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 transition-all cursor-default flex items-center gap-1 select-none"
+                            title={
+                              item.confidence === 'low'
+                                ? '信心度：需强化 (Low) - 艾宾浩斯复习间隔减半 (0.5x)，优先排队安排复习'
+                                : item.confidence === 'high'
+                                ? '信心度：熟记 (High) - 复习间隔延长 (1.75x)'
+                                : '信心度：掌握中 (Med) - 标准复习间隔 (1.0x)'
+                            }
                           >
-                            <span>词根: {item.root_core}</span>
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                item.confidence === 'low'
+                                  ? 'bg-rose-400'
+                                  : item.confidence === 'high'
+                                  ? 'bg-emerald-400'
+                                  : 'bg-amber-400'
+                              }`}
+                            />
+                            <span>
+                              {item.confidence === 'low' ? '需强化' : item.confidence === 'high' ? '熟记' : '掌握中'}
+                            </span>
                           </span>
+                        )}
 
-                          {/* Floating Tooltip appearing at bottom-right (右下方) */}
-                          <div className="absolute top-full left-0 mt-1.5 hidden group-hover/root:flex flex-col items-start z-30 pointer-events-none animate-in fade-in duration-150">
-                            <div className="w-2 h-2 bg-zinc-900 border-l border-t border-indigo-500/40 rotate-45 ml-3 -mb-1 z-10" />
-                            <div className="bg-zinc-900/95 text-white border border-indigo-500/40 px-3 py-1.5 rounded-xl shadow-2xl text-xs whitespace-nowrap flex items-center gap-1.5 font-sans backdrop-blur-md">
-                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
-                              <span className="font-mono font-bold text-indigo-300">{item.root_core}</span>
-                              <span className="text-zinc-500">:</span>
-                              <span className="font-medium text-zinc-100">
-                                {rootMeaning || '暂无释义'}
-                              </span>
+                        {/* Mastered status badge */}
+                        {isMastered && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+                            <CheckCircle2 size={10} />
+                            已掌握
+                          </span>
+                        )}
+
+                        {/* Affix / Root tags preview with hover meaning tooltip */}
+                        {item.root_core && isWordRevealed && (
+                          <div 
+                            className="relative group/root inline-flex items-center"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <span 
+                              className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 transition-colors duration-100 cursor-default flex items-center gap-1 select-none"
+                            >
+                              <span>词根: {item.root_core}</span>
+                            </span>
+
+                            {/* Floating Tooltip appearing at bottom-right (右下方) */}
+                            <div className="absolute top-full left-0 mt-1.5 hidden group-hover/root:flex flex-col items-start z-30 pointer-events-none">
+                              <div className="w-2 h-2 bg-zinc-900 border-l border-t border-indigo-500/40 rotate-45 ml-3 -mb-1 z-10" />
+                              <div className="bg-zinc-900 text-white border border-indigo-500/40 px-3 py-1.5 rounded-xl shadow-xl text-xs whitespace-nowrap flex items-center gap-1.5 font-sans">
+                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
+                                <span className="font-mono font-bold text-indigo-300">{item.root_core}</span>
+                                <span className="text-zinc-500">:</span>
+                                <span className="font-medium text-zinc-100">
+                                  {rootMeaning || '暂无释义'}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Target Original List tag */}
-                      {isMastered && (
-                        <span className="text-[10px] text-amber-400/90 font-mono bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                          原列表: {targetOriginalList}
-                        </span>
+                        {/* Target Original List tag */}
+                        {isMastered && (
+                          <span className="text-[10px] text-amber-400/90 font-mono bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                            原列表: {targetOriginalList}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Meaning */}
+                      {isMeaningRevealed ? (
+                        <div className="space-y-1 pt-0.5 animate-in fade-in duration-150 text-left">
+                          <div className="text-xs text-zinc-200 font-medium text-left">
+                            {item.meaning}
+                          </div>
+                          {item.phrase && isWordRevealed && (
+                            <div className="text-xs text-emerald-400/90 font-medium flex items-center gap-1.5 text-left">
+                              <span className="text-[11px] text-zinc-500 font-sans font-normal shrink-0">搭配:</span>
+                              <span>{item.phrase}</span>
+                            </div>
+                          )}
+                          {item.example_sentence && isWordRevealed && (
+                            <div className="text-xs text-zinc-300 italic flex items-start gap-1.5 leading-relaxed text-left group/ex">
+                              <span className="text-[11px] text-zinc-500 font-sans not-italic font-normal shrink-0">例句:</span>
+                              <span className="flex-1 text-zinc-200">"{item.example_sentence}"</span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  speakWord(item.example_sentence!);
+                                }}
+                                className="p-1 text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors shrink-0 -mt-0.5"
+                              >
+                                <Volume2 size={12} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-[11px] text-zinc-500">
+                          <span className="italic">词义与例句已隐藏</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleRevealSingle(item.id);
+                            }}
+                            className="hover:text-zinc-300 text-zinc-600 underline text-[10px] ml-1 cursor-pointer"
+                          >
+                            点击偷看
+                          </button>
+                        </div>
                       )}
                     </div>
 
-                    {/* Meaning */}
-                    {isMeaningRevealed ? (
-                      <div className="space-y-1 pt-0.5 animate-in fade-in duration-150 text-left">
-                        <div className="text-xs text-zinc-200 font-medium text-left">
-                          {item.meaning}
-                        </div>
-                        {item.phrase && isWordRevealed && (
-                          <div className="text-xs text-emerald-400/90 font-medium flex items-center gap-1.5 text-left">
-                            <span className="text-[11px] text-zinc-500 font-sans font-normal shrink-0">搭配:</span>
-                            <span>{item.phrase}</span>
-                          </div>
-                        )}
-                        {item.example_sentence && isWordRevealed && (
-                          <div className="text-xs text-zinc-300 italic flex items-start gap-1.5 leading-relaxed text-left group/ex">
-                            <span className="text-[11px] text-zinc-500 font-sans not-italic font-normal shrink-0">例句:</span>
-                            <span className="flex-1 text-zinc-200">"{item.example_sentence}"</span>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                speakWord(item.example_sentence!);
-                              }}
-                              className="p-1 text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors shrink-0 -mt-0.5"
-                            >
-                              <Volume2 size={12} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1 text-[11px] text-zinc-500">
-                        <span className="italic">词义与例句已隐藏</span>
+                    {/* Actions on right */}
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      {/* 一键返回原来的 (One-click return to original list) */}
+                      {isMastered && (
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            toggleRevealSingle(item.id);
+                            onReturnWord(item);
                           }}
-                          className="hover:text-zinc-300 text-zinc-600 underline text-[10px] ml-1 cursor-pointer"
+                          className="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 border border-amber-500/30 hover:border-amber-500/50 text-xs font-semibold transition-colors duration-100 flex items-center gap-1.5 shadow-sm active:scale-95"
                         >
-                          点击偷看
+                          <Undo2 size={13} className="text-amber-400" />
+                          <span>一键返回</span>
                         </button>
-                      </div>
-                    )}
-                  </div>
+                      )}
 
-                  {/* Actions on right */}
-                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                    {/* 一键返回原来的 (One-click return to original list) */}
-                    {isMastered && (
+                      {/* 切换学习 */}
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onReturnWord(item);
+                          onSelectWord(item);
+                          onClose();
                         }}
-                        className="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 border border-amber-500/30 hover:border-amber-500/50 text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                        className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-emerald-600/30 text-zinc-300 hover:text-emerald-300 text-xs font-medium transition-colors duration-100 flex items-center gap-1 shadow-sm active:scale-95"
                       >
-                        <Undo2 size={13} className="text-amber-400" />
-                        <span>一键返回</span>
+                        <span>切换学习</span>
+                        <ArrowRight size={12} />
                       </button>
-                    )}
-
-                    {/* 切换学习 */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectWord(item);
-                        onClose();
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-emerald-600/30 text-zinc-300 hover:text-emerald-300 text-xs font-medium transition-all flex items-center gap-1 shadow-sm active:scale-95"
-                    >
-                      <span>切换学习</span>
-                      <ArrowRight size={12} />
-                    </button>
+                    </div>
                   </div>
+                );
+              })}
+
+              {visibleWords.length < displayedWords.length && (
+                <div className="py-4 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setRenderLimit(prev => Math.min(prev + 100, displayedWords.length))}
+                    className="px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white text-xs font-mono transition-colors cursor-pointer"
+                  >
+                    已加载 {visibleWords.length} / {displayedWords.length} 词 · 向下滚动自动加载更多
+                  </button>
                 </div>
-              );
-            })
+              )}
+            </>
           )}
         </div>
 

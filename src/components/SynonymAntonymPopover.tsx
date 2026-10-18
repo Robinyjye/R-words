@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ArrowLeftRight, Loader2, Sparkles, Database, Volume2 } from 'lucide-react';
 import { WordState } from '../utils/word';
 import { findSynonymsAndAntonymsInLibrary, fetchDatamuseSynAnt } from '../utils/thesaurus';
@@ -8,19 +8,49 @@ interface SynonymAntonymPopoverProps {
   currentWord: WordState | null;
   allWords: WordState[];
   onSelectWord?: (word: WordState) => void;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
+export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = React.memo(({
   currentWord,
   allWords,
   onSelectWord,
+  isOpen: controlledIsOpen,
+  onOpenChange,
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  const isOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
+
+  const setIsOpen = useCallback((valOrFn: boolean | ((prev: boolean) => boolean)) => {
+    if (typeof valOrFn === 'function') {
+      const next = valOrFn(isOpen);
+      if (controlledIsOpen === undefined) {
+        setInternalIsOpen(next);
+      }
+      onOpenChange?.(next);
+    } else {
+      if (controlledIsOpen === undefined) {
+        setInternalIsOpen(valOrFn);
+      }
+      onOpenChange?.(valOrFn);
+    }
+  }, [isOpen, controlledIsOpen, onOpenChange]);
+
   const [apiData, setApiData] = useState<{ syn: Set<string>; ant: Set<string> } | null>(null);
   const [isLoadingApi, setIsLoadingApi] = useState(false);
   const leaveTimerRef = useRef<number | null>(null);
 
-  // Fetch / update API data for the current word
+  // Clear pending timers on unmount
+  useEffect(() => {
+    return () => {
+      if (leaveTimerRef.current) {
+        clearTimeout(leaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Fetch / update API data for the current word ONLY when the popover is actually open
   useEffect(() => {
     if (!currentWord || !isOpen) return;
 
@@ -45,14 +75,15 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
     };
   }, [currentWord?.word, isOpen]);
 
-  // Compute search result across the entire library
+  // Lazy compute search result across library ONLY when open
   const searchResult = useMemo(() => {
-    if (!currentWord) return { synonyms: [], antonyms: [], totalSearched: 0 };
+    if (!isOpen || !currentWord) return { synonyms: [], antonyms: [], totalSearched: 0 };
     return findSynonymsAndAntonymsInLibrary(currentWord, allWords, apiData);
-  }, [currentWord, allWords, apiData]);
+  }, [isOpen, currentWord, allWords, apiData]);
 
-  // Map of root_core -> root_meaning across all words for comprehensive lookups
+  // Lazy Map of root_core -> root_meaning across all words ONLY when open
   const rootMeaningsMap = useMemo(() => {
+    if (!isOpen) return new Map<string, string>();
     const map = new Map<string, string>();
     for (const w of allWords) {
       if (w.root_core && w.root_meaning) {
@@ -60,7 +91,7 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
       }
     }
     return map;
-  }, [allWords]);
+  }, [isOpen, allWords]);
 
   const handleMouseEnter = () => {
     if (leaveTimerRef.current) {
@@ -71,6 +102,9 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
   };
 
   const handleMouseLeave = () => {
+    if (leaveTimerRef.current) {
+      clearTimeout(leaveTimerRef.current);
+    }
     leaveTimerRef.current = window.setTimeout(() => {
       setIsOpen(false);
     }, 200);
@@ -88,12 +122,18 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
       <button
         type="button"
         tabIndex={-1}
-        className={`p-1.5 rounded-full transition-all focus:outline-none cursor-pointer ${
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsOpen((prev: boolean) => !prev);
+        }}
+        className={`p-1.5 rounded-full transition-colors focus:outline-none cursor-pointer ${
           isOpen
             ? 'text-sky-400 bg-sky-400/15 ring-1 ring-sky-400/40'
             : 'text-zinc-500 hover:text-sky-400 hover:bg-sky-400/10'
         }`}
-        aria-label="在全部词库搜索近义词和反义词"
+        title="近义词与反义词检索 (快捷键: Shift)"
+        aria-label="在全部词库搜索近义词和反义词 (快捷键: Shift)"
       >
         <ArrowLeftRight size={14} />
       </button>
@@ -101,9 +141,7 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
       {/* Floating Hover Card - positioned on the right and shifted downward so it stays below the main word */}
       {isOpen && (
         <div 
-          className="absolute left-full top-[-6px] ml-3.5 w-76 sm:w-88 z-50 animate-in fade-in zoom-in-95 duration-150 pointer-events-auto"
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
+          className="absolute left-full top-[-6px] ml-3.5 w-76 sm:w-88 z-50 animate-in fade-in zoom-in-95 duration-100 pointer-events-auto transform-gpu"
         >
           {/* Invisible hover bridge to prevent mouseleave when moving across the gap */}
           <div className="absolute -left-4 top-0 w-4 h-full pointer-events-auto" />
@@ -111,7 +149,7 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
           {/* Small left-pointing triangle arrow directed at the icon */}
           <div className="w-2.5 h-2.5 bg-zinc-900 border-l border-b border-zinc-700/70 rotate-45 absolute -left-1.5 top-[14px] shadow-sm z-10" />
 
-          <div className="relative bg-zinc-900/95 border border-zinc-700/70 rounded-2xl shadow-2xl backdrop-blur-md p-3.5 text-left text-xs text-zinc-100 ring-1 ring-white/5">
+          <div className="relative bg-zinc-900 border border-zinc-700/70 rounded-2xl shadow-2xl p-3.5 text-left text-xs text-zinc-100 ring-1 ring-white/5">
             {/* Header */}
             <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-zinc-800">
               <div className="flex items-center gap-1.5 font-medium text-zinc-200">
@@ -153,10 +191,12 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
                         onClick={() => {
                           speakWordAndExample(item.word, item.example_sentence);
                         }}
-                        className="flex items-baseline gap-2 p-1.5 rounded-lg bg-zinc-800/60 hover:bg-emerald-500/10 border border-zinc-700/40 hover:border-emerald-500/30 transition-all cursor-pointer group/item"
-                        title="点击朗读单词和例句"
+                        className="flex items-baseline gap-2 p-1.5 rounded-lg bg-zinc-800/60 hover:bg-emerald-500/10 border border-zinc-700/40 hover:border-emerald-500/30 transition-colors duration-100 cursor-pointer group/item"
                       >
-                        <span className="font-mono font-bold text-white group-hover/item:text-emerald-300 shrink-0">
+                        <span
+                          className="font-mono font-bold text-white group-hover/item:text-emerald-300 shrink-0"
+                          title={item.example_sentence?.trim() || undefined}
+                        >
                           {item.word}
                         </span>
                         {item.part_of_speech && (
@@ -218,10 +258,12 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
                         onClick={() => {
                           speakWordAndExample(item.word, item.example_sentence);
                         }}
-                        className="flex items-baseline gap-2 p-1.5 rounded-lg bg-zinc-800/60 hover:bg-rose-500/10 border border-zinc-700/40 hover:border-rose-500/30 transition-all cursor-pointer group/item"
-                        title="点击朗读单词和例句"
+                        className="flex items-baseline gap-2 p-1.5 rounded-lg bg-zinc-800/60 hover:bg-rose-500/10 border border-zinc-700/40 hover:border-rose-500/30 transition-colors duration-100 cursor-pointer group/item"
                       >
-                        <span className="font-mono font-bold text-white group-hover/item:text-rose-300 shrink-0">
+                        <span
+                          className="font-mono font-bold text-white group-hover/item:text-rose-300 shrink-0"
+                          title={item.example_sentence?.trim() || undefined}
+                        >
                           {item.word}
                         </span>
                         {item.part_of_speech && (
@@ -274,4 +316,4 @@ export const SynonymAntonymPopover: React.FC<SynonymAntonymPopoverProps> = ({
       )}
     </div>
   );
-};
+});

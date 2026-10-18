@@ -323,10 +323,18 @@ export function cleanChineseKeyword(raw: string): string {
 }
 
 /**
+ * Fast LRU/Map cache for extracted Chinese keywords to avoid re-parsing meanings
+ */
+const KEYWORD_CACHE = new Map<string, string[]>();
+
+/**
  * Extract clean, normalized Chinese keywords from a definition
  */
 export function extractChineseKeywords(meaning?: string): string[] {
   if (!meaning) return [];
+  const cached = KEYWORD_CACHE.get(meaning);
+  if (cached) return cached;
+
   // Split on delimiters
   const rawSegments = meaning.split(/[,，;；/、\s\n[\]()（）·+~]+/);
   const keywordsSet = new Set<string>();
@@ -338,7 +346,12 @@ export function extractChineseKeywords(meaning?: string): string[] {
     }
   }
 
-  return Array.from(keywordsSet);
+  const result = Array.from(keywordsSet);
+  if (KEYWORD_CACHE.size > 2000) {
+    KEYWORD_CACHE.clear();
+  }
+  KEYWORD_CACHE.set(meaning, result);
+  return result;
 }
 
 /**
@@ -531,16 +544,20 @@ for (const [c1, c2] of CHINESE_CLUSTER_OPPOSITION_PAIRS) {
  * 1. Exact cleaned keyword match (e.g. both have "端庄", "差异", "反驳")
  * 2. Shared high-precision Semantic Cluster (e.g. "差异" and "不同", "临时" and "短暂")
  */
-export function checkChineseMeaningSynonym(meaningA?: string, meaningB?: string): { isSyn: boolean; reason?: string } {
-  if (!meaningA || !meaningB) return { isSyn: false };
-  const kwA = extractChineseKeywords(meaningA);
-  const kwB = extractChineseKeywords(meaningB);
-  if (kwA.length === 0 || kwB.length === 0) return { isSyn: false };
+export function checkChineseMeaningSynonym(
+  meaningA?: string,
+  meaningB?: string,
+  kwA?: string[],
+  kwB?: string[]
+): { isSyn: boolean; reason?: string } {
+  const kA = kwA || extractChineseKeywords(meaningA);
+  const kB = kwB || extractChineseKeywords(meaningB);
+  if (kA.length === 0 || kB.length === 0) return { isSyn: false };
 
   // 1. Exact cleaned keyword match
-  for (const a of kwA) {
+  for (const a of kA) {
     if (a.length >= 2 && !CHINESE_STOP_WORDS.has(a)) {
-      for (const b of kwB) {
+      for (const b of kB) {
         if (a === b) {
           return { isSyn: true, reason: `释义相同: ${a}` };
         }
@@ -549,10 +566,10 @@ export function checkChineseMeaningSynonym(meaningA?: string, meaningB?: string)
   }
 
   // 2. Semantic Cluster match (both belong to same curated synonym concept)
-  for (const a of kwA) {
+  for (const a of kA) {
     const clusterA = CHINESE_KEYWORD_TO_CLUSTER.get(a);
     if (clusterA !== undefined) {
-      for (const b of kwB) {
+      for (const b of kB) {
         const clusterB = CHINESE_KEYWORD_TO_CLUSTER.get(b);
         if (clusterB === clusterA) {
           return { isSyn: true, reason: `释义相近: ${a} / ${b}` };
@@ -593,39 +610,46 @@ const CHINESE_ANTONYM_PAIRS: [string, string][] = [
   ['坚持', '放弃'], ['友好', '敌意'], ['服从', '违抗'], ['普遍', '独特']
 ];
 
+// Inverted lookup map for O(1) antonym pair checks
+const CHINESE_ANTONYM_MAP = new Map<string, string>();
+for (const [p1, p2] of CHINESE_ANTONYM_PAIRS) {
+  CHINESE_ANTONYM_MAP.set(`${p1}###${p2}`, `释义反义: ${p1} ↔ ${p2}`);
+  CHINESE_ANTONYM_MAP.set(`${p2}###${p1}`, `释义反义: ${p1} ↔ ${p2}`);
+}
+
 /**
  * Check Chinese meaning for antonym markers:
- * 1. Strict morphological negation (e.g. 平等 vs 不平等, 合法 vs 非法)
+ * 1. Direct high-confidence Chinese Antonym Pairs (O(1) Map lookup)
  * 2. Opposing Semantic Clusters
- * 3. Direct high-confidence Chinese Antonym Pairs
+ * 3. Strict morphological negation (e.g. 平等 vs 不平等, 合法 vs 非法)
  */
-export function checkChineseAntonymOpposition(meaningA?: string, meaningB?: string): { isAnt: boolean; reason?: string } {
-  if (!meaningA || !meaningB) return { isAnt: false };
-  const kwA = extractChineseKeywords(meaningA);
-  const kwB = extractChineseKeywords(meaningB);
-  if (kwA.length === 0 || kwB.length === 0) return { isAnt: false };
+export function checkChineseAntonymOpposition(
+  meaningA?: string,
+  meaningB?: string,
+  kwA?: string[],
+  kwB?: string[]
+): { isAnt: boolean; reason?: string } {
+  const kA = kwA || extractChineseKeywords(meaningA);
+  const kB = kwB || extractChineseKeywords(meaningB);
+  if (kA.length === 0 || kB.length === 0) return { isAnt: false };
 
-  // 1. Morphological negation on exact root words
-  const NEG_PREFIXES = ['不', '非', '无', '未'];
-  for (const a of kwA) {
-    if (a.length < 2 || CHINESE_STOP_WORDS.has(a)) continue;
-    for (const b of kwB) {
-      if (b.length < 2 || CHINESE_STOP_WORDS.has(b)) continue;
-      for (const neg of NEG_PREFIXES) {
-        if (a === `${neg}${b}` || b === `${neg}${a}`) {
-          return { isAnt: true, reason: `否定反义: ${a} ↔ ${b}` };
-        }
+  // 1. Direct high-confidence semantic contrast pairs via O(1) map
+  for (const a of kA) {
+    for (const b of kB) {
+      const match = CHINESE_ANTONYM_MAP.get(`${a}###${b}`);
+      if (match) {
+        return { isAnt: true, reason: match };
       }
     }
   }
 
   // 2. Opposing Semantic Clusters
-  for (const a of kwA) {
+  for (const a of kA) {
     const clusterA = CHINESE_KEYWORD_TO_CLUSTER.get(a);
     if (clusterA !== undefined) {
       const opposites = CHINESE_CLUSTER_OPPOSITES.get(clusterA);
       if (opposites) {
-        for (const b of kwB) {
+        for (const b of kB) {
           const clusterB = CHINESE_KEYWORD_TO_CLUSTER.get(b);
           if (clusterB !== undefined && opposites.has(clusterB)) {
             return { isAnt: true, reason: `释义对立: ${a} ↔ ${b}` };
@@ -635,12 +659,15 @@ export function checkChineseAntonymOpposition(meaningA?: string, meaningB?: stri
     }
   }
 
-  // 3. Direct high-confidence semantic contrast pairs
-  for (const a of kwA) {
-    for (const b of kwB) {
-      for (const [p1, p2] of CHINESE_ANTONYM_PAIRS) {
-        if ((a === p1 && b === p2) || (a === p2 && b === p1)) {
-          return { isAnt: true, reason: `释义反义: ${p1} ↔ ${p2}` };
+  // 3. Morphological negation on exact root words
+  const NEG_PREFIXES = ['不', '非', '无', '未'];
+  for (const a of kA) {
+    if (a.length < 2 || CHINESE_STOP_WORDS.has(a)) continue;
+    for (const b of kB) {
+      if (b.length < 2 || CHINESE_STOP_WORDS.has(b)) continue;
+      for (const neg of NEG_PREFIXES) {
+        if (a === `${neg}${b}` || b === `${neg}${a}`) {
+          return { isAnt: true, reason: `否定反义: ${a} ↔ ${b}` };
         }
       }
     }
@@ -739,6 +766,9 @@ export function findSynonymsAndAntonymsInLibrary(
     : Array.isArray((targetWord as any).antonyms) ? (targetWord as any).antonyms.map(normalizeWord) : [];
   targetExplicitAnts.forEach((w: string) => antSet.add(w));
 
+  // Pre-extract target keywords once outside loop to avoid millions of regex parses
+  const targetKw = extractChineseKeywords(targetWord.meaning);
+
   // Result collections (deduped by normalized word)
   const matchedSynonyms: ThesaurusMatchedWord[] = [];
   const matchedAntonyms: ThesaurusMatchedWord[] = [];
@@ -767,6 +797,15 @@ export function findSynonymsAndAntonymsInLibrary(
       ? ((candidate as any).antonyms as string).split(/[,，/、\s]+/).map(normalizeWord).filter(Boolean)
       : Array.isArray((candidate as any).antonyms) ? (candidate as any).antonyms.map(normalizeWord) : [];
 
+    // Lazy candidate Chinese keyword extraction (at most once per candidate)
+    let candKw: string[] | null = null;
+    const getCandKw = () => {
+      if (candKw === null) {
+        candKw = extractChineseKeywords(candidate.meaning);
+      }
+      return candKw;
+    };
+
     // Is it an Antonym?
     let isAnt = false;
     let antReason: string | undefined;
@@ -783,12 +822,15 @@ export function findSynonymsAndAntonymsInLibrary(
     } else if (checkSuffixOpposition(targetWord.word, candidate.word)) {
       isAnt = true;
       antReason = '后缀对立反义';
-    } else if (posMatches) {
+    } else if (posMatches && targetKw.length > 0 && candidate.meaning) {
       // Only evaluate Chinese antonym opposition if parts of speech are compatible!
-      const chAntCheck = checkChineseAntonymOpposition(targetWord.meaning, candidate.meaning);
-      if (chAntCheck.isAnt) {
-        isAnt = true;
-        antReason = chAntCheck.reason;
+      const cKw = getCandKw();
+      if (cKw.length > 0) {
+        const chAntCheck = checkChineseAntonymOpposition(undefined, undefined, targetKw, cKw);
+        if (chAntCheck.isAnt) {
+          isAnt = true;
+          antReason = chAntCheck.reason;
+        }
       }
     }
 
@@ -813,12 +855,15 @@ export function findSynonymsAndAntonymsInLibrary(
     } else if (candExplicitSyns.includes(targetClean)) {
       isSyn = true;
       synReason = '用户标注近义';
-    } else if (posMatches) {
+    } else if (posMatches && targetKw.length > 0 && candidate.meaning) {
       // Check Chinese meaning similarity with strict POS compatibility
-      const chSynCheck = checkChineseMeaningSynonym(targetWord.meaning, candidate.meaning);
-      if (chSynCheck.isSyn) {
-        isSyn = true;
-        synReason = chSynCheck.reason;
+      const cKw = getCandKw();
+      if (cKw.length > 0) {
+        const chSynCheck = checkChineseMeaningSynonym(undefined, undefined, targetKw, cKw);
+        if (chSynCheck.isSyn) {
+          isSyn = true;
+          synReason = chSynCheck.reason;
+        }
       }
     }
 
