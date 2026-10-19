@@ -15,7 +15,7 @@ import { RootDetectiveGame } from './components/RootDetectiveGame';
 import { SameRootWordsModal } from './components/SameRootWordsModal';
 import { WordListModal } from './components/WordListModal';
 import { SynonymAntonymPopover } from './components/SynonymAntonymPopover';
-import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, Save, CopyX, BarChart2, Search, BookOpen, Sparkles, Loader2, Users, Undo2, Play, Pause } from 'lucide-react';
+import { Database, CheckCircle2, Clock, ChevronDown, Pencil, Trash2, Volume2, Headphones, ArrowLeft, ArrowRight, Brain, RotateCcw, Gamepad2, X, Eye, Download, Save, CopyX, BarChart2, Search, BookOpen, Sparkles, Loader2, Users, Undo2, Play, Pause, GitFork } from 'lucide-react';
 import Papa from 'papaparse';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
@@ -205,6 +205,26 @@ export default function App() {
   const [peekedHintThisWord, setPeekedHintThisWord] = useState(false);
   const [peekedRootThisWord, setPeekedRootThisWord] = useState(false);
   const [sessionErrors, setSessionErrors] = useState<Set<string>>(new Set());
+  
+  // Jump Source state for returning after clicking "学习" in modals
+  const [jumpSource, setJumpSource] = useState<{
+    previousWord: WordState;
+    previousListName?: string;
+    rootInfo?: { rootCore: string; rootMeaning?: string } | null;
+  } | null>(null);
+
+  const handleReturnToPreviousWord = useCallback(() => {
+    if (!jumpSource) return;
+    const { previousWord: targetWord, previousListName } = jumpSource;
+    setCurrentWord(targetWord);
+    if (previousListName && previousListName !== activeList) {
+      setActiveList(previousListName);
+    }
+    setInput('');
+    setJumpSource(null);
+    speakWordAndExample(targetWord.word, targetWord.example_sentence);
+    showToast(`已返回原单词: "${targetWord.word}"`);
+  }, [jumpSource, activeList, showToast]);
   
   useEffect(() => {
     setHasError(false);
@@ -2791,8 +2811,53 @@ export default function App() {
               transition={{ duration: 0.2 }}
               className="w-full text-center"
             >
+              {/* Return Banner when navigated via "学习" in root/list modal */}
+              {jumpSource && (
+                <div className="w-full flex justify-center mb-6 z-30">
+                  <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-2xl bg-indigo-950/85 border border-indigo-500/40 text-xs shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200 flex-wrap justify-center">
+                    <span className="text-zinc-400 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+                      <span>已跳转学习，原词:</span>
+                      <span className="text-white font-mono font-bold">"{jumpSource.previousWord.word}"</span>
+                    </span>
+                    <span className="text-zinc-700">|</span>
+                    <button
+                      type="button"
+                      onClick={handleReturnToPreviousWord}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all shadow-sm active:scale-95 cursor-pointer"
+                      title={`返回原单词 "${jumpSource.previousWord.word}"`}
+                    >
+                      <ArrowLeft size={13} />
+                      <span>返回原词</span>
+                    </button>
+                    {jumpSource.rootInfo && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedRootInfo(jumpSource.rootInfo!);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white font-medium transition-all shadow-sm active:scale-95 cursor-pointer border border-zinc-700/60"
+                        title="重新打开词根构词拓扑关联图"
+                      >
+                        <GitFork size={13} className="text-indigo-400" />
+                        <span>返回词根图</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setJumpSource(null)}
+                      className="p-1 text-zinc-500 hover:text-zinc-300 rounded-full transition-colors ml-0.5 cursor-pointer"
+                      title="关闭返回提示"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Main Word */}
-              <div className="relative inline-block mb-6 min-w-[200px]">
+              <div className="w-full flex justify-center">
+                <div className="relative inline-block mb-6 min-w-[200px]">
                 {(history.length > 0 || (isAutoPlaying && currentModeWords.length > 1)) && previousWord && (
                   <div className="absolute top-1/2 -translate-y-1/2 right-full mr-4 sm:mr-8 md:mr-12 flex items-center select-none z-20 group/prev pointer-events-auto">
                     <span
@@ -2889,6 +2954,7 @@ export default function App() {
                   </h1>
                 )}
               </div>
+            </div>
 
               {/* Root Breakdown directly under the main word (as shown in Image 1) */}
               {(currentWord.prefix || currentWord.root_core || currentWord.suffix) ? (
@@ -3011,12 +3077,21 @@ export default function App() {
                   isOpen={isThesaurusOpen}
                   onOpenChange={setIsThesaurusOpen}
                   onSelectWord={(selectedWord) => {
+                    if (currentWord && currentWord.id !== selectedWord.id) {
+                      setJumpSource({
+                        previousWord: currentWord,
+                        previousListName: activeList,
+                        rootInfo: null,
+                      });
+                      setHistory(prev => [...prev, currentWord.id]);
+                    }
                     if (selectedWord.listName && selectedWord.listName !== activeList) {
                       setActiveList(selectedWord.listName);
                     }
                     setCurrentWord(selectedWord);
                     setInput('');
                     speakWordAndExample(selectedWord.word, selectedWord.example_sentence);
+                    showToast(`已切换至单词: "${selectedWord.word}"`);
                   }}
                 />
               </div>
@@ -3837,10 +3912,20 @@ export default function App() {
           allWords={words}
           onClose={() => setSelectedRootInfo(null)}
           onSelectWord={(word) => {
+            if (currentWord && currentWord.id !== word.id) {
+              setJumpSource({
+                previousWord: currentWord,
+                previousListName: activeList,
+                rootInfo: selectedRootInfo ? { ...selectedRootInfo } : null,
+              });
+              setHistory(prev => [...prev, currentWord.id]);
+            }
             setCurrentWord(word);
             if (word.listName && word.listName !== activeList) {
               setActiveList(word.listName);
             }
+            setInput('');
+            speakWordAndExample(word.word, word.example_sentence);
             showToast(`已切换至单词: "${word.word}"`);
           }}
           onUpdateWord={handleSaveWordData}
@@ -3855,10 +3940,20 @@ export default function App() {
           allWords={words}
           currentListWords={filteredWords}
           onSelectWord={(word) => {
+            if (currentWord && currentWord.id !== word.id) {
+              setJumpSource({
+                previousWord: currentWord,
+                previousListName: activeList,
+                rootInfo: null,
+              });
+              setHistory(prev => [...prev, currentWord.id]);
+            }
             setCurrentWord(word);
             if (word.listName && word.listName !== activeList) {
               setActiveList(word.listName);
             }
+            setInput('');
+            speakWordAndExample(word.word, word.example_sentence);
             showToast(`已切换至单词: "${word.word}"`);
           }}
           onReturnWord={handleReturnWordFromList}

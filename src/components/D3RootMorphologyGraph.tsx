@@ -1,23 +1,40 @@
 import React, { useEffect, useRef, useMemo, useState } from 'react';
 import * as d3 from 'd3';
-import { Volume2, ArrowRight, Sparkles, ZoomIn, ZoomOut, RotateCcw, Maximize2, Layers, BookOpen } from 'lucide-react';
+import { Volume2, ArrowRight, Sparkles, ZoomIn, ZoomOut, RotateCcw, Maximize2, Layers, BookOpen, Search, X, GitFork } from 'lucide-react';
 import { WordState } from '../utils/word';
 import { speakWord, speakWordAndExample } from '../utils/audio';
+import { generateExampleSentenceForWord } from '../utils/sentence';
 
 interface D3RootMorphologyGraphProps {
   rootCore: string;
   rootMeaning?: string;
   words: WordState[];
+  allWords?: WordState[];
   currentWordId?: string;
+  selectedAffix?: {
+    type: 'prefix' | 'suffix';
+    text: string;
+    meaning?: string | null;
+  } | null;
+  onSelectAffix?: (affix: {
+    type: 'prefix' | 'suffix';
+    text: string;
+    meaning?: string | null;
+  } | null) => void;
   onSelectWord: (word: WordState) => void;
+  onUpdateWord?: (word: WordState) => void;
 }
 
 export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
   rootCore,
   rootMeaning,
   words,
+  allWords = [],
   currentWordId,
+  selectedAffix: selectedAffixProp,
+  onSelectAffix: onSelectAffixProp,
   onSelectWord,
+  onUpdateWord,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -26,6 +43,94 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
   const [selectedWordId, setSelectedWordId] = useState<string>(() => {
     return currentWordId || words[0]?.id || '';
   });
+
+  // Selected Affix for searching words across the library (controlled or internal)
+  const [internalSelectedAffix, setInternalSelectedAffix] = useState<{
+    type: 'prefix' | 'suffix';
+    text: string;
+    meaning?: string | null;
+  } | null>(null);
+
+  const currentAffix = selectedAffixProp !== undefined ? selectedAffixProp : internalSelectedAffix;
+  const setCurrentAffix = (affix: { type: 'prefix' | 'suffix'; text: string; meaning?: string | null } | null) => {
+    if (onSelectAffixProp) {
+      onSelectAffixProp(affix);
+    }
+    setInternalSelectedAffix(affix);
+  };
+
+  const [activeRightTab, setActiveRightTab] = useState<'word' | 'affix'>('word');
+  const [affixSearchTerm, setAffixSearchTerm] = useState('');
+
+  // Switch to affix tab when an affix is selected
+  useEffect(() => {
+    if (currentAffix) {
+      setActiveRightTab('affix');
+    }
+  }, [currentAffix]);
+
+  // Find all words in the whole vocabulary matching the selected affix
+  const matchedAffixWords = useMemo(() => {
+    if (!currentAffix || !allWords || allWords.length === 0) return [];
+
+    const rawTarget = currentAffix.text.trim();
+    const cleanTarget = rawTarget.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    if (!cleanTarget) return [];
+
+    const exactMatches: WordState[] = [];
+    const derivedMatches: WordState[] = [];
+    const seenIds = new Set<string>();
+
+    allWords.forEach(w => {
+      if (seenIds.has(w.id)) return;
+
+      if (currentAffix.type === 'prefix') {
+        const wPrefixClean = (w.prefix || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase().trim();
+        // Exact prefix match
+        if (wPrefixClean && wPrefixClean === cleanTarget) {
+          exactMatches.push(w);
+          seenIds.add(w.id);
+          return;
+        }
+        // Fallback match: word starts with prefix
+        const wordLower = w.word.toLowerCase().trim();
+        if (!w.prefix && cleanTarget.length >= 2 && wordLower.startsWith(cleanTarget) && wordLower.length > cleanTarget.length + 1) {
+          derivedMatches.push(w);
+          seenIds.add(w.id);
+        }
+      } else {
+        // Suffix
+        const wSuffixClean = (w.suffix || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase().trim();
+        // Exact suffix match
+        if (wSuffixClean && wSuffixClean === cleanTarget) {
+          exactMatches.push(w);
+          seenIds.add(w.id);
+          return;
+        }
+        // Fallback match: word ends with suffix
+        const wordLower = w.word.toLowerCase().trim();
+        if (!w.suffix && cleanTarget.length >= 2 && wordLower.endsWith(cleanTarget) && wordLower.length > cleanTarget.length + 1) {
+          derivedMatches.push(w);
+          seenIds.add(w.id);
+        }
+      }
+    });
+
+    const sortedExact = exactMatches.sort((a, b) => a.word.localeCompare(b.word));
+    const sortedDerived = derivedMatches.sort((a, b) => a.word.localeCompare(b.word));
+
+    return [...sortedExact, ...sortedDerived];
+  }, [currentAffix, allWords]);
+
+  const filteredAffixWords = useMemo(() => {
+    if (!affixSearchTerm.trim()) return matchedAffixWords;
+    const q = affixSearchTerm.toLowerCase().trim();
+    return matchedAffixWords.filter(w =>
+      w.word.toLowerCase().includes(q) ||
+      (w.meaning && w.meaning.toLowerCase().includes(q)) ||
+      (w.phrase && w.phrase.toLowerCase().includes(q))
+    );
+  }, [matchedAffixWords, affixSearchTerm]);
 
   // Keep selectedWordId in sync with currentWordId or words
   useEffect(() => {
@@ -79,6 +184,36 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [words, selectedWordId, selectedWord, onSelectWord]);
+
+  // Handle playing both word and example sentence when clicking the speaker icon
+  const handlePlayWordAndExample = async (w: WordState) => {
+    if (w.example_sentence) {
+      speakWordAndExample(w.word, w.example_sentence);
+      return;
+    }
+
+    // Speak word first
+    speakWord(w.word);
+
+    // If no sentence yet, try generating in background and speak sentence once ready
+    try {
+      const res = await generateExampleSentenceForWord(w.word, w.meaning, w.part_of_speech);
+      if (res.example_sentence) {
+        if (onUpdateWord) {
+          onUpdateWord({
+            ...w,
+            example_sentence: res.example_sentence,
+            phrase: w.phrase || res.phrase,
+          });
+        }
+        setTimeout(() => {
+          speakWord(res.example_sentence!);
+        }, 650);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Clean root core
   const cleanRoot = useMemo(() => {
@@ -274,6 +409,17 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
     suffixGrad.append('stop').attr('offset', '0%').attr('stop-color', '#2563eb');
     suffixGrad.append('stop').attr('offset', '100%').attr('stop-color', '#1e40af');
 
+    // Suffix Active Gradient (Vibrant Purple/Indigo Highlight)
+    const suffixActiveGrad = defs
+      .append('linearGradient')
+      .attr('id', 'suffixActiveGrad')
+      .attr('x1', '0%')
+      .attr('y1', '0%')
+      .attr('x2', '100%')
+      .attr('y2', '100%');
+    suffixActiveGrad.append('stop').attr('offset', '0%').attr('stop-color', '#4338ca');
+    suffixActiveGrad.append('stop').attr('offset', '100%').attr('stop-color', '#7e22ce');
+
     // Prefix Gradient (Slate Sky)
     const prefixGrad = defs
       .append('linearGradient')
@@ -284,6 +430,17 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
       .attr('y2', '100%');
     prefixGrad.append('stop').attr('offset', '0%').attr('stop-color', '#1e293b');
     prefixGrad.append('stop').attr('offset', '100%').attr('stop-color', '#0f172a');
+
+    // Prefix Active Gradient (Vibrant Sky Blue Highlight)
+    const prefixActiveGrad = defs
+      .append('linearGradient')
+      .attr('id', 'prefixActiveGrad')
+      .attr('x1', '0%')
+      .attr('y1', '0%')
+      .attr('x2', '100%')
+      .attr('y2', '100%');
+    prefixActiveGrad.append('stop').attr('offset', '0%').attr('stop-color', '#0284c7');
+    prefixActiveGrad.append('stop').attr('offset', '100%').attr('stop-color', '#0369a1');
 
     // Word Gradient
     const wordGrad = defs
@@ -503,13 +660,26 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
 
       // === Prefix Node ===
       if (d.prefix) {
+        const isPrefixSelected = currentAffix?.type === 'prefix' && 
+          currentAffix.text.toLowerCase().trim() === d.prefix.toLowerCase().trim();
+
         const prefixG = nodesGroup
           .append('g')
           .attr('transform', `translate(${colPrefixX},${rowY})`)
           .attr('filter', 'url(#soft-shadow)')
           .attr('cursor', 'pointer')
           .on('mouseenter', () => setHoveredWordId(d.id))
-          .on('mouseleave', () => setHoveredWordId(null));
+          .on('mouseleave', () => setHoveredWordId(null))
+          .on('click', (event) => {
+            event.stopPropagation();
+            setCurrentAffix({
+              type: 'prefix',
+              text: d.prefix!,
+              meaning: d.prefixMeaning
+            });
+            setAffixSearchTerm('');
+            setActiveRightTab('affix');
+          });
 
         prefixG
           .append('rect')
@@ -519,15 +689,15 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
           .attr('height', prefixH)
           .attr('rx', 7)
           .attr('ry', 7)
-          .attr('fill', 'url(#prefixLinearGrad)')
-          .attr('stroke', isHighlighted ? '#38bdf8' : '#0284c7')
-          .attr('stroke-width', isHighlighted ? 1.8 : 1.2);
+          .attr('fill', isPrefixSelected ? 'url(#prefixActiveGrad)' : 'url(#prefixLinearGrad)')
+          .attr('stroke', isPrefixSelected ? '#38bdf8' : isHighlighted ? '#38bdf8' : '#0284c7')
+          .attr('stroke-width', isPrefixSelected ? 2.8 : isHighlighted ? 1.8 : 1.2);
 
         prefixG
           .append('text')
           .attr('text-anchor', 'middle')
           .attr('y', d.prefixMeaning ? -4 : 6)
-          .attr('fill', '#38bdf8')
+          .attr('fill', isPrefixSelected ? '#ffffff' : '#38bdf8')
           .attr('font-size', '16.5px')
           .attr('font-weight', 'bold')
           .attr('font-family', 'ui-monospace, monospace')
@@ -538,22 +708,39 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
             .append('text')
             .attr('text-anchor', 'middle')
             .attr('y', 14)
-            .attr('fill', '#94a3b8')
+            .attr('fill', isPrefixSelected ? '#bae6fd' : '#94a3b8')
             .attr('font-size', '14px')
             .attr('font-family', 'sans-serif')
             .text(d.prefixMeaning.length > 7 ? d.prefixMeaning.slice(0, 6) + '..' : d.prefixMeaning);
         }
+
+        prefixG
+          .append('title')
+          .text(`点击在词库搜索使用前缀 "${d.prefix}" 的全部单词`);
       }
 
       // === Suffix Node (Refined Blue Card matching user image) ===
       if (d.suffix) {
+        const isSuffixSelected = currentAffix?.type === 'suffix' && 
+          currentAffix.text.toLowerCase().trim() === d.suffix.toLowerCase().trim();
+
         const suffixG = nodesGroup
           .append('g')
           .attr('transform', `translate(${colSuffixX},${rowY})`)
           .attr('filter', 'url(#soft-shadow)')
           .attr('cursor', 'pointer')
           .on('mouseenter', () => setHoveredWordId(d.id))
-          .on('mouseleave', () => setHoveredWordId(null));
+          .on('mouseleave', () => setHoveredWordId(null))
+          .on('click', (event) => {
+            event.stopPropagation();
+            setCurrentAffix({
+              type: 'suffix',
+              text: d.suffix!,
+              meaning: d.suffixMeaning
+            });
+            setAffixSearchTerm('');
+            setActiveRightTab('affix');
+          });
 
         suffixG
           .append('rect')
@@ -563,9 +750,9 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
           .attr('height', suffixH)
           .attr('rx', 7)
           .attr('ry', 7)
-          .attr('fill', 'url(#suffixLinearGrad)')
-          .attr('stroke', isHighlighted ? '#93c5fd' : '#60a5fa')
-          .attr('stroke-width', isHighlighted ? 2 : 1.3);
+          .attr('fill', isSuffixSelected ? 'url(#suffixActiveGrad)' : 'url(#suffixLinearGrad)')
+          .attr('stroke', isSuffixSelected ? '#c084fc' : isHighlighted ? '#93c5fd' : '#60a5fa')
+          .attr('stroke-width', isSuffixSelected ? 2.8 : isHighlighted ? 2 : 1.3);
 
         suffixG
           .append('text')
@@ -582,11 +769,15 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
             .append('text')
             .attr('text-anchor', 'middle')
             .attr('y', 14)
-            .attr('fill', '#bfdbfe')
+            .attr('fill', isSuffixSelected ? '#f5d0fe' : '#bfdbfe')
             .attr('font-size', '14px')
             .attr('font-family', 'sans-serif')
             .text(d.suffixMeaning.length > 7 ? d.suffixMeaning.slice(0, 6) + '..' : d.suffixMeaning);
         }
+
+        suffixG
+          .append('title')
+          .text(`点击在词库搜索使用后缀 "${d.suffix}" 的全部单词`);
       }
 
       // === Word Card Node (Compact, Sleek, Interactive) ===
@@ -681,7 +872,7 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
     const fitScale = Math.min(1.05, (containerWidth - 20) / graphWidth);
     const initialTransform = d3.zoomIdentity.scale(fitScale).translate(10, 5);
     svg.call(zoom.transform, initialTransform);
-  }, [morphologyData, cleanRoot, rootMeaning, currentWordId, hoveredWordId, selectedWordId]);
+  }, [morphologyData, cleanRoot, rootMeaning, currentWordId, hoveredWordId, selectedWordId, currentAffix]);
 
   // Zoom controls
   const handleZoom = (factor: number) => {
@@ -775,154 +966,395 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
           <div className="absolute bottom-2 left-3 text-[10px] text-zinc-500 font-mono pointer-events-none select-none flex items-center gap-1.5 flex-wrap">
             <span>可平移缩放</span>
             <span>·</span>
+            <span className="text-sky-300 font-semibold bg-sky-500/15 px-1.5 py-0.5 rounded border border-sky-500/30">点击前缀/后缀检索词库</span>
+            <span>·</span>
             <span className="text-indigo-300 font-semibold bg-indigo-500/15 px-1.5 py-0.5 rounded border border-indigo-500/30">↑ / ↓ 切换选择单词</span>
             <span>·</span>
             <span>Enter 切换学习</span>
-            <span>·</span>
-            <span>点击单词发音</span>
           </div>
         </div>
 
-        {/* Right: Dedicated Word & Example Sentence Panel (Permanent Right-Side Display with Zero Obstruction) */}
+        {/* Right: Dedicated Word & Example Sentence Panel / Affix Search Panel */}
         <div
-          className={`w-full lg:w-80 shrink-0 rounded-2xl p-4 flex flex-col justify-between shadow-2xl transition-all duration-200 border ${
+          className={`w-full lg:w-84 xl:w-96 shrink-0 rounded-2xl p-4 flex flex-col justify-between shadow-2xl transition-all duration-200 border ${
             isHovering
               ? 'border-indigo-500/70 ring-1 ring-indigo-500/40 bg-zinc-900/90'
               : 'border-zinc-800/90 bg-zinc-900/60'
           }`}
         >
-          {activeWord ? (
-            <div className="space-y-3.5 flex-1 flex flex-col justify-between">
-              {/* Top: Header & Badges */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80">
-                  <div className="flex items-center gap-1.5 text-xs text-zinc-400">
-                    <BookOpen size={13} className="text-indigo-400" />
-                    <span className="font-semibold text-zinc-300">单词与例句详解</span>
-                  </div>
-                  {isHovering ? (
-                    <span className="text-[10px] text-indigo-300 font-mono bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 rounded-full animate-pulse">
-                      悬浮预览
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800/80 px-2 py-0.5 rounded border border-zinc-700/50">
-                      ↑ / ↓ 切换
-                    </span>
-                  )}
-                </div>
-
-                {/* Word, Phonetic, Meaning */}
-                <div className="space-y-1">
-                  <div className="flex items-baseline gap-2 flex-wrap">
-                    <span className="font-mono font-bold text-white text-lg">
-                      {activeWord.word}
-                    </span>
-                    {activeWord.phonetic && (
-                      <span className="text-xs text-zinc-400 font-mono">
-                        {activeWord.phonetic}
-                      </span>
-                    )}
-                    {activeWord.part_of_speech && (
-                      <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
-                        {activeWord.part_of_speech}
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-sm text-emerald-400 font-medium">
-                    {activeWord.meaning}
-                  </div>
-                </div>
-
-                {/* Example Sentence Box */}
-                <div className="bg-zinc-950/70 rounded-xl p-3 border border-zinc-800/80 space-y-2">
-                  <div className="flex items-center justify-between text-xs text-indigo-300 font-medium">
-                    <span className="flex items-center gap-1">
-                      <Sparkles size={11} className="text-indigo-400" />
-                      例句 (Example Sentence)
-                    </span>
-                    {activeWord.example_sentence && (
-                      <button
-                        type="button"
-                        onClick={() => speakWord(activeWord.example_sentence!)}
-                        className="p-1 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors"
-                        title="朗读例句"
-                      >
-                        <Volume2 size={13} />
-                      </button>
-                    )}
-                  </div>
-
-                  {activeWord.example_sentence ? (
-                    <p className="text-xs text-zinc-200 italic leading-relaxed pl-2 border-l-2 border-indigo-500/60">
-                      "{activeWord.example_sentence}"
-                    </p>
-                  ) : (
-                    <p className="text-xs text-zinc-500 italic py-1">
-                      暂无例句数据
-                    </p>
-                  )}
-
-                  {activeWord.phrase && (
-                    <div className="pt-2 border-t border-zinc-800/60 text-xs text-emerald-400/90 font-medium flex items-start gap-1.5">
-                      <span className="text-zinc-500 text-[11px] shrink-0">常用搭配:</span>
-                      <span className="break-words">{activeWord.phrase}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Affix Breakdown */}
-                {(activeWord.prefix || activeWord.root_core || activeWord.suffix) && (
-                  <div className="text-[11px] font-mono text-zinc-400 bg-zinc-950/50 p-2.5 rounded-xl border border-zinc-800/60 flex flex-wrap items-center gap-1">
-                    <span className="text-zinc-500 text-[10px]">构词:</span>
-                    {activeWord.prefix && (
-                      <span className="text-sky-400">
-                        {activeWord.prefix}
-                        {activeWord.prefix_meaning ? ` (${activeWord.prefix_meaning})` : ''}
-                      </span>
-                    )}
-                    {activeWord.prefix && (activeWord.root_core || activeWord.suffix) && <span className="text-zinc-600">+</span>}
-                    {activeWord.root_core && (
-                      <span className="text-indigo-300 font-bold bg-indigo-500/10 px-1 py-0.2 rounded border border-indigo-500/20">
-                        {activeWord.root_core}
-                        {activeWord.root_meaning ? ` (${activeWord.root_meaning})` : ''}
-                      </span>
-                    )}
-                    {activeWord.root_core && activeWord.suffix && <span className="text-zinc-600">+</span>}
-                    {activeWord.suffix && (
-                      <span className="text-purple-400">
-                        {activeWord.suffix}
-                        {activeWord.suffix_meaning ? ` (${activeWord.suffix_meaning})` : ''}
-                      </span>
-                    )}
-                  </div>
+          {/* Top Header Tabs: 单词详情 vs 词库前缀/后缀检索 */}
+          <div className="space-y-3 flex-1 flex flex-col min-h-0">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80 gap-1.5 flex-wrap">
+              <div className="flex items-center gap-1 bg-zinc-950/80 p-0.5 rounded-xl border border-zinc-800 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setActiveRightTab('word')}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+                    activeRightTab === 'word'
+                      ? 'bg-zinc-800 text-white font-bold shadow-sm'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                  title="查看单词与例句详解"
+                >
+                  <BookOpen size={12} className={activeRightTab === 'word' ? 'text-indigo-400' : 'text-zinc-400'} />
+                  <span>单词详解</span>
+                </button>
+                {currentAffix && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveRightTab('affix')}
+                    className={`px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+                      activeRightTab === 'affix'
+                        ? currentAffix.type === 'prefix'
+                          ? 'bg-sky-600 text-white font-bold shadow-sm'
+                          : 'bg-purple-600 text-white font-bold shadow-sm'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                    title={`查看使用${currentAffix.type === 'prefix' ? '前缀' : '后缀'} "${currentAffix.text}" 的词库列表`}
+                  >
+                    <Search size={12} />
+                    <span>{currentAffix.type === 'prefix' ? '前缀' : '后缀'}: {currentAffix.text} ({matchedAffixWords.length})</span>
+                  </button>
                 )}
               </div>
 
-              {/* Bottom Actions */}
-              <div className="pt-3 border-t border-zinc-800/80 flex items-center gap-2">
+              {activeRightTab === 'word' ? (
+                isHovering ? (
+                  <span className="text-[10px] text-indigo-300 font-mono bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 rounded-full animate-pulse shrink-0">
+                    悬浮预览
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800/80 px-2 py-0.5 rounded border border-zinc-700/50 shrink-0">
+                    ↑ / ↓ 切换
+                  </span>
+                )
+              ) : (
                 <button
                   type="button"
-                  onClick={() => speakWordAndExample(activeWord.word, activeWord.example_sentence)}
-                  className="p-2 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded-xl transition-colors border border-zinc-800 flex items-center justify-center shrink-0"
-                  title="朗读单词及例句"
+                  onClick={() => {
+                    setCurrentAffix(null);
+                    setActiveRightTab('word');
+                  }}
+                  className="p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded transition-colors shrink-0"
+                  title="关闭词库检索并返回单词详解"
                 >
-                  <Volume2 size={16} />
+                  <X size={14} />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => onSelectWord(activeWord)}
-                  className="flex-1 py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
-                >
-                  <span>切换学习该词</span>
-                  <ArrowRight size={13} />
-                </button>
+              )}
+            </div>
+
+            {/* TAB 1: Affix Library Words Search View */}
+            {activeRightTab === 'affix' && currentAffix ? (
+              <div className="space-y-3 flex-1 flex flex-col min-h-0">
+                {/* Affix Banner (Compact) */}
+                <div className={`px-2.5 py-1.5 rounded-xl border flex items-center justify-between gap-2 ${
+                  currentAffix.type === 'prefix' 
+                    ? 'bg-sky-950/30 border-sky-500/30 text-sky-200' 
+                    : 'bg-purple-950/30 border-purple-500/30 text-purple-200'
+                }`}>
+                  <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
+                    <span className="font-mono font-bold text-xs tracking-wide">
+                      {currentAffix.type === 'prefix' ? '前缀' : '后缀'}: {currentAffix.text}
+                    </span>
+                    {currentAffix.meaning && (
+                      <span className="text-[11px] text-zinc-300 bg-zinc-900/80 px-1.5 py-0.2 rounded border border-zinc-700/60">
+                        {currentAffix.meaning}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-zinc-400">
+                      (共 <span className="text-emerald-400 font-bold">{matchedAffixWords.length}</span> 词)
+                    </span>
+                  </div>
+                </div>
+
+                {/* Sub-search input if many words */}
+                {matchedAffixWords.length > 4 && (
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={affixSearchTerm}
+                      onChange={(e) => setAffixSearchTerm(e.target.value)}
+                      placeholder={`在匹配的 ${matchedAffixWords.length} 个单词中搜索...`}
+                      className="w-full bg-zinc-950/80 border border-zinc-800 rounded-xl pl-8 pr-3 py-1 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50"
+                    />
+                    <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+                  </div>
+                )}
+
+                {/* Word List - Compact: show phrase, remove example sentence */}
+                <div className="flex-1 overflow-y-auto space-y-1.5 max-h-[380px] pr-1">
+                  {filteredAffixWords.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-zinc-500 space-y-1.5">
+                      <p>未找到匹配的单词</p>
+                      <p className="text-[10px] text-zinc-600">词库中暂未收录更多使用该{currentAffix.type === 'prefix' ? '前缀' : '后缀'}的词汇</p>
+                    </div>
+                  ) : (
+                    filteredAffixWords.map(w => {
+                      const isSelectedInGraph = w.id === selectedWordId;
+                      return (
+                        <div
+                          key={w.id}
+                          className={`p-2 rounded-xl border transition-all text-left space-y-1 group ${
+                            isSelectedInGraph
+                              ? 'bg-indigo-950/30 border-indigo-500/40'
+                              : 'bg-zinc-950/60 border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-900/60'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1.5">
+                            <div className="flex items-baseline gap-1.5 flex-wrap min-w-0">
+                              <span className="font-mono font-bold text-sm text-white group-hover:text-indigo-300 transition-colors">
+                                {w.word}
+                              </span>
+                              {w.part_of_speech && (
+                                <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-zinc-800 text-zinc-400">
+                                  {w.part_of_speech}
+                                </span>
+                              )}
+                              {w.phonetic && (
+                                <span className="text-[10px] font-mono text-zinc-500">
+                                  {w.phonetic}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePlayWordAndExample(w);
+                                }}
+                                className="p-1 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded transition-colors"
+                                title="朗读单词和例句"
+                              >
+                                <Volume2 size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSelectWord(w);
+                                }}
+                                className="px-2 py-0.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-semibold transition-all flex items-center gap-0.5 cursor-pointer"
+                                title="切换至该单词学习"
+                              >
+                                <span>学习</span>
+                                <ArrowRight size={10} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Line 2: Meaning and Phrase Collocation (on the same line) */}
+                          <div className="text-xs flex items-baseline gap-2 min-w-0">
+                            <span className="text-emerald-400 font-medium truncate shrink-0 max-w-[55%]">
+                              {w.meaning}
+                            </span>
+                            {w.phrase && (
+                              <span className="text-[11px] text-zinc-400 font-medium flex items-baseline gap-1 truncate min-w-0">
+                                <span className="text-zinc-500 text-[10px] shrink-0 font-sans">搭配:</span>
+                                <span className="text-indigo-300/90 truncate">{w.phrase}</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Line 3: Prefix + Root + Suffix breakdown (in previous phrase position) */}
+                          {(() => {
+                            const prefixText = w.prefix || (currentAffix?.type === 'prefix' && w.word.toLowerCase().startsWith(currentAffix.text.replace(/[^a-zA-Z]/g, '').toLowerCase()) ? currentAffix.text : undefined);
+                            const prefixMeaning = w.prefix_meaning || (prefixText === currentAffix?.text ? currentAffix?.meaning : undefined);
+                            const suffixText = w.suffix || (currentAffix?.type === 'suffix' && w.word.toLowerCase().endsWith(currentAffix.text.replace(/[^a-zA-Z]/g, '').toLowerCase()) ? currentAffix.text : undefined);
+                            const suffixMeaning = w.suffix_meaning || (suffixText === currentAffix?.text ? currentAffix?.meaning : undefined);
+
+                            if (!prefixText && !w.root_core && !suffixText) return null;
+
+                            return (
+                              <div className="text-[11px] font-mono text-zinc-400 flex flex-wrap items-center gap-1 pt-0.5">
+                                {prefixText && (
+                                  <span className="text-sky-400 font-medium">
+                                    {prefixText}
+                                    {prefixMeaning ? ` (${prefixMeaning})` : ''}
+                                  </span>
+                                )}
+                                {prefixText && (w.root_core || suffixText) && <span className="text-zinc-600">+</span>}
+                                {w.root_core && (
+                                  <span className="text-indigo-300 font-bold bg-indigo-500/10 px-1 py-0.2 rounded border border-indigo-500/20">
+                                    {w.root_core}
+                                    {w.root_meaning ? ` (${w.root_meaning})` : ''}
+                                  </span>
+                                )}
+                                {w.root_core && suffixText && <span className="text-zinc-600">+</span>}
+                                {suffixText && (
+                                  <span className="text-purple-400 font-medium">
+                                    {suffixText}
+                                    {suffixMeaning ? ` (${suffixMeaning})` : ''}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Footer Return */}
+                <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setActiveRightTab('word')}
+                    className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 text-[11px] font-medium"
+                  >
+                    <span>← 返回单词详解与例句</span>
+                  </button>
+                  <span className="text-[10px] text-zinc-500 font-mono">
+                    点击“学习”可切换练习卡片
+                  </span>
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="py-12 text-center text-zinc-500 text-xs">
-              悬浮或点击拓扑图中的单词以查看例句详解
-            </div>
-          )}
+            ) : (
+              /* TAB 2: Standard Word Details & Example Sentence View */
+              activeWord ? (
+                <div className="space-y-3.5 flex-1 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    {/* Word, Phonetic, Meaning */}
+                    <div className="space-y-1">
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <span className="font-mono font-bold text-white text-lg">
+                          {activeWord.word}
+                        </span>
+                        {activeWord.phonetic && (
+                          <span className="text-xs text-zinc-400 font-mono">
+                            {activeWord.phonetic}
+                          </span>
+                        )}
+                        {activeWord.part_of_speech && (
+                          <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
+                            {activeWord.part_of_speech}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-emerald-400 font-medium">
+                        {activeWord.meaning}
+                      </div>
+                    </div>
+
+                    {/* Example Sentence Box */}
+                    <div className="bg-zinc-950/70 rounded-xl p-3 border border-zinc-800/80 space-y-2">
+                      <div className="flex items-center justify-between text-xs text-indigo-300 font-medium">
+                        <span className="flex items-center gap-1">
+                          <Sparkles size={11} className="text-indigo-400" />
+                          例句 (Example Sentence)
+                        </span>
+                        {activeWord.example_sentence && (
+                          <button
+                            type="button"
+                            onClick={() => speakWord(activeWord.example_sentence!)}
+                            className="p-1 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded-full transition-colors"
+                            title="朗读例句"
+                          >
+                            <Volume2 size={13} />
+                          </button>
+                        )}
+                      </div>
+
+                      {activeWord.example_sentence ? (
+                        <p className="text-xs text-zinc-200 italic leading-relaxed pl-2 border-l-2 border-indigo-500/60">
+                          "{activeWord.example_sentence}"
+                        </p>
+                      ) : (
+                        <p className="text-xs text-zinc-500 italic py-1">
+                          暂无例句数据
+                        </p>
+                      )}
+
+                      {activeWord.phrase && (
+                        <div className="pt-2 border-t border-zinc-800/60 text-xs text-emerald-400/90 font-medium flex items-start gap-1.5">
+                          <span className="text-zinc-500 text-[11px] shrink-0">常用搭配:</span>
+                          <span className="break-words">{activeWord.phrase}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Affix Breakdown with Interactive Click to Search */}
+                    {(activeWord.prefix || activeWord.root_core || activeWord.suffix) && (
+                      <div className="text-[11px] font-mono text-zinc-400 bg-zinc-950/50 p-2.5 rounded-xl border border-zinc-800/60 flex flex-wrap items-center gap-1">
+                        <span className="text-zinc-500 text-[10px]">构词:</span>
+                        {activeWord.prefix && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCurrentAffix({
+                                type: 'prefix',
+                                text: activeWord.prefix!,
+                                meaning: activeWord.prefix_meaning
+                              });
+                              setAffixSearchTerm('');
+                              setActiveRightTab('affix');
+                            }}
+                            className="text-sky-400 hover:text-sky-300 hover:underline cursor-pointer transition-colors px-1 py-0.5 rounded hover:bg-sky-500/10"
+                            title="点击在词库搜索使用此前缀的全部单词"
+                          >
+                            {activeWord.prefix}
+                            {activeWord.prefix_meaning ? ` (${activeWord.prefix_meaning})` : ''}
+                          </button>
+                        )}
+                        {activeWord.prefix && (activeWord.root_core || activeWord.suffix) && <span className="text-zinc-600">+</span>}
+                        {activeWord.root_core && (
+                          <span className="text-indigo-300 font-bold bg-indigo-500/10 px-1 py-0.2 rounded border border-indigo-500/20">
+                            {activeWord.root_core}
+                            {activeWord.root_meaning ? ` (${activeWord.root_meaning})` : ''}
+                          </span>
+                        )}
+                        {activeWord.root_core && activeWord.suffix && <span className="text-zinc-600">+</span>}
+                        {activeWord.suffix && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCurrentAffix({
+                                type: 'suffix',
+                                text: activeWord.suffix!,
+                                meaning: activeWord.suffix_meaning
+                              });
+                              setAffixSearchTerm('');
+                              setActiveRightTab('affix');
+                            }}
+                            className="text-purple-400 hover:text-purple-300 hover:underline cursor-pointer transition-colors px-1 py-0.5 rounded hover:bg-purple-500/10"
+                            title="点击在词库搜索使用此后缀的全部单词"
+                          >
+                            {activeWord.suffix}
+                            {activeWord.suffix_meaning ? ` (${activeWord.suffix_meaning})` : ''}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Bottom Actions */}
+                  <div className="pt-3 border-t border-zinc-800/80 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => speakWordAndExample(activeWord.word, activeWord.example_sentence)}
+                      className="p-2 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded-xl transition-colors border border-zinc-800 flex items-center justify-center shrink-0"
+                      title="朗读单词及例句"
+                    >
+                      <Volume2 size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSelectWord(activeWord)}
+                      className="flex-1 py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+                    >
+                      <span>切换学习该词</span>
+                      <ArrowRight size={13} />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-12 text-center text-zinc-500 text-xs">
+                  悬浮或点击拓扑图中的单词以查看例句详解
+                </div>
+              )
+            )}
+          </div>
         </div>
       </div>
     </div>

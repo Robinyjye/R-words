@@ -27,6 +27,11 @@ export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph');
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
+  const [selectedAffix, setSelectedAffix] = useState<{
+    type: 'prefix' | 'suffix';
+    text: string;
+    meaning?: string | null;
+  } | null>(null);
 
   // Handle ESC or Ctrl key to close
   useEffect(() => {
@@ -212,11 +217,15 @@ export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
               rootCore={rootCore}
               rootMeaning={rootMeaning}
               words={matchingWords}
+              allWords={allWords}
               currentWordId={currentWordId}
+              selectedAffix={selectedAffix}
+              onSelectAffix={setSelectedAffix}
               onSelectWord={(word) => {
                 onSelectWord(word);
                 onClose();
               }}
+              onUpdateWord={onUpdateWord}
             />
           </div>
         ) : (
@@ -309,10 +318,22 @@ export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
                     {(wordItem.prefix || wordItem.root_core || wordItem.suffix) && (
                       <div className="text-[11px] font-mono text-zinc-400 flex flex-wrap items-center gap-1 pt-0.5">
                         {wordItem.prefix && (
-                          <span className="text-blue-400/90">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAffix({
+                                type: 'prefix',
+                                text: wordItem.prefix!,
+                                meaning: wordItem.prefix_meaning
+                              });
+                              setViewMode('graph');
+                            }}
+                            className="text-blue-400/90 hover:text-sky-300 hover:underline cursor-pointer transition-colors"
+                            title="点击在词库搜索使用此前缀的全部单词"
+                          >
                             {wordItem.prefix}
                             {wordItem.prefix_meaning ? ` (${wordItem.prefix_meaning})` : ''}
-                          </span>
+                          </button>
                         )}
                         {wordItem.prefix && (wordItem.root_core || wordItem.suffix) && <span className="text-zinc-600">+</span>}
                         {wordItem.root_core && (
@@ -323,10 +344,22 @@ export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
                         )}
                         {wordItem.root_core && wordItem.suffix && <span className="text-zinc-600">+</span>}
                         {wordItem.suffix && (
-                          <span className="text-purple-400/90">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAffix({
+                                type: 'suffix',
+                                text: wordItem.suffix!,
+                                meaning: wordItem.suffix_meaning
+                              });
+                              setViewMode('graph');
+                            }}
+                            className="text-purple-400/90 hover:text-purple-300 hover:underline cursor-pointer transition-colors"
+                            title="点击在词库搜索使用此后缀的全部单词"
+                          >
                             {wordItem.suffix}
                             {wordItem.suffix_meaning ? ` (${wordItem.suffix_meaning})` : ''}
-                          </span>
+                          </button>
                         )}
                       </div>
                     )}
