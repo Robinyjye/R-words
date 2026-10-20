@@ -39,6 +39,16 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const transformRef = useRef<d3.ZoomTransform | null>(null);
+  const lastRootRef = useRef<string>(rootCore);
+
+  useEffect(() => {
+    if (lastRootRef.current !== rootCore) {
+      lastRootRef.current = rootCore;
+      transformRef.current = null;
+    }
+  }, [rootCore]);
+
   const [hoveredWordId, setHoveredWordId] = useState<string | null>(null);
   const [selectedWordId, setSelectedWordId] = useState<string>(() => {
     return currentWordId || words[0]?.id || '';
@@ -469,8 +479,9 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
 
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.65, 2.2])
+      .scaleExtent([0.5, 3.0])
       .on('zoom', event => {
+        transformRef.current = event.transform;
         g.attr('transform', event.transform);
       });
 
@@ -868,10 +879,16 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
         .text('🔊');
     });
 
-    // Fit Initial View smoothly
-    const fitScale = Math.min(1.05, (containerWidth - 20) / graphWidth);
-    const initialTransform = d3.zoomIdentity.scale(fitScale).translate(10, 5);
-    svg.call(zoom.transform, initialTransform);
+    // Maintain user's zoom/pan position across re-renders (hover, selection, affix toggle),
+    // and only apply initial fit scale when first loaded or root changes
+    if (transformRef.current) {
+      svg.call(zoom.transform, transformRef.current);
+    } else {
+      const fitScale = Math.min(1.05, (containerWidth - 20) / graphWidth);
+      const initialTransform = d3.zoomIdentity.scale(fitScale).translate(10, 5);
+      transformRef.current = initialTransform;
+      svg.call(zoom.transform, initialTransform);
+    }
   }, [morphologyData, cleanRoot, rootMeaning, currentWordId, hoveredWordId, selectedWordId, currentAffix]);
 
   // Zoom controls
@@ -885,10 +902,16 @@ export const D3RootMorphologyGraph: React.FC<D3RootMorphologyGraphProps> = ({
 
   const handleResetZoom = () => {
     if (!svgRef.current || !zoomBehaviorRef.current) return;
+    const containerWidth = containerRef.current ? containerRef.current.clientWidth : 750;
+    const hasAnyPrefix = morphologyData.some(d => d.prefix);
+    const graphWidth = Math.max(containerWidth, hasAnyPrefix ? 710 : 625);
+    const fitScale = Math.min(1.05, (containerWidth - 20) / graphWidth);
+    const resetTransform = d3.zoomIdentity.scale(fitScale).translate(10, 5);
+    transformRef.current = resetTransform;
     d3.select(svgRef.current)
       .transition()
       .duration(250)
-      .call(zoomBehaviorRef.current.transform, d3.zoomIdentity);
+      .call(zoomBehaviorRef.current.transform, resetTransform);
   };
 
   const isHovering = Boolean(hoveredWordId);

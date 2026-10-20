@@ -24,6 +24,7 @@ interface DailyStat {
   count: number; // words
   minutes?: number; // learning minutes
   seconds?: number; // learning seconds
+  masteredCount?: number; // words mastered on this day
 }
 
 interface Stats {
@@ -1239,6 +1240,7 @@ export default function App() {
             game_correct_streak: newStreak,
             peek_penalty: autoMastered ? false : (isPenalty ? true : w.peek_penalty),
             is_mastered: autoMastered ? true : w.is_mastered,
+            mastered_time: autoMastered ? (w.mastered_time || now) : w.mastered_time,
             previousListName: autoMastered 
               ? ((w.listName && w.listName !== 'Mastered Words') ? w.listName : (w.previousListName || 'Default List'))
               : w.previousListName,
@@ -1256,6 +1258,7 @@ export default function App() {
             game_correct_streak: newStreak,
             peek_penalty: autoMastered ? false : (isPenalty ? true : w.peek_penalty),
             is_mastered: autoMastered ? true : w.is_mastered,
+            mastered_time: autoMastered ? (w.mastered_time || now) : w.mastered_time,
             listName: autoMastered ? 'Mastered Words' : w.listName,
           };
         }));
@@ -1265,6 +1268,20 @@ export default function App() {
             particleCount: 80,
             spread: 70,
             origin: { y: 0.6 }
+          });
+          setStats(prev => {
+            const daily = { ...prev.daily };
+            const todayStat = daily[today] || { count: 0 };
+            return {
+              ...prev,
+              daily: {
+                ...daily,
+                [today]: {
+                  ...todayStat,
+                  masteredCount: (todayStat.masteredCount || 0) + 1
+                }
+              }
+            };
           });
           if (isPenalty) {
             showToast(`🎉 "${currentWordInGame.word}" 连续 6 次完全正确拼出，已自动标记为「已掌握」！`);
@@ -1297,6 +1314,7 @@ export default function App() {
             game_correct_streak: newStreak,
             peek_penalty: autoMastered ? false : (isPenalty ? true : currentWord.peek_penalty),
             is_mastered: autoMastered ? true : currentWord.is_mastered,
+            mastered_time: autoMastered ? (currentWord.mastered_time || now) : currentWord.mastered_time,
             previousListName: autoMastered
               ? ((currentWord.listName && currentWord.listName !== 'Mastered Words') ? currentWord.listName : (currentWord.previousListName || 'Default List'))
               : currentWord.previousListName,
@@ -1825,6 +1843,7 @@ export default function App() {
       is_completed_dictation: isDictationMode ? true : currentWord.is_completed_dictation,
       dictation_correct_streak: isDictationMode ? dictationStreak : currentWord.dictation_correct_streak,
       is_mastered: autoMastered ? true : currentWord.is_mastered,
+      mastered_time: autoMastered ? (currentWord.mastered_time || now) : currentWord.mastered_time,
       previousListName: autoMastered
         ? ((currentWord.listName && currentWord.listName !== 'Mastered Words') ? currentWord.listName : (currentWord.previousListName || 'Default List'))
         : currentWord.previousListName,
@@ -1860,7 +1879,8 @@ export default function App() {
           ...daily,
           [today]: {
             ...daily[today],
-            count: daily[today].count + 1
+            count: daily[today].count + 1,
+            masteredCount: autoMastered ? ((daily[today].masteredCount || 0) + 1) : (daily[today].masteredCount || 0)
           }
         }
       };
@@ -2275,13 +2295,14 @@ export default function App() {
   const handleMasterWord = useCallback(() => {
     if (!currentWord) return;
     
-    setIsTransitioning(true);
-    
+    const now = Date.now();
+    const today = new Date().toISOString().split('T')[0];
     const updatedWords = words.map(w => 
       w.id === currentWord.id 
         ? { 
             ...w, 
             is_mastered: true, 
+            mastered_time: now,
             previousListName: (w.listName && w.listName !== 'Mastered Words') ? w.listName : (w.previousListName || 'Default List'),
             listName: 'Mastered Words' 
           } 
@@ -2290,6 +2311,20 @@ export default function App() {
     
     setWords(updatedWords);
     saveWords(updatedWords);
+    setStats(prev => {
+      const daily = { ...prev.daily };
+      const todayStat = daily[today] || { count: 0 };
+      return {
+        ...prev,
+        daily: {
+          ...daily,
+          [today]: {
+            ...todayStat,
+            masteredCount: (todayStat.masteredCount || 0) + 1
+          }
+        }
+      };
+    });
     showToast(`已标记 "${currentWord.word}" 为已学会，并移至 "Mastered Words" 列表`);
     
     // Transition to next word manually instead of calling handleSkip to avoid state race
@@ -3481,6 +3516,7 @@ export default function App() {
                         setEditingWordData({ 
                           ...editingWordData, 
                           is_mastered: isMastered,
+                          mastered_time: isMastered ? (editingWordData.mastered_time || Date.now()) : null,
                           previousListName: isMastered ? fallbackPrevList : editingWordData.previousListName,
                           listName: isMastered ? 'Mastered Words' : (editingWordData.listName === 'Mastered Words' ? fallbackPrevList : editingWordData.listName)
                         });

@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect, useState } from 'react';
+import React, { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -13,9 +13,26 @@ import {
   Layers, 
   ShieldCheck, 
   Activity,
-  Sparkles
+  Sparkles,
+  Milestone,
+  ArrowUpRight,
+  LineChart as LineChartIcon
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
+import { 
+  BarChart, 
+  Bar, 
+  LineChart, 
+  Line, 
+  ComposedChart, 
+  Area, 
+  XAxis, 
+  YAxis, 
+  ResponsiveContainer, 
+  Tooltip, 
+  Cell, 
+  CartesianGrid, 
+  Legend 
+} from 'recharts';
 import { WordState } from '../utils/word';
 import { isWordDue } from '../utils/storage';
 
@@ -23,6 +40,7 @@ interface DailyStat {
   count: number; // words
   minutes?: number; // learning minutes
   seconds?: number; // learning seconds
+  masteredCount?: number; // words mastered
 }
 
 interface Stats {
@@ -39,6 +57,85 @@ interface StatsModalProps {
   words?: WordState[];
 }
 
+interface TrendPoint {
+  label: string;
+  shortLabel: string;
+  fullPeriod: string;
+  cumulativeMastered: number;
+  newMastered: number;
+  reviewCount: number;
+  studyMinutes: number;
+  startDate: string;
+  endDate: string;
+}
+
+const formatLocalDate = (d: Date): string => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const CustomTrendTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0]?.payload as TrendPoint;
+    if (!data) return null;
+    return (
+      <div className="bg-zinc-950/95 border border-zinc-800 p-3.5 rounded-2xl shadow-2xl backdrop-blur-md text-xs space-y-2 min-w-[210px]">
+        <div className="font-semibold text-zinc-300 pb-1.5 border-b border-zinc-800/80 flex items-center justify-between gap-2">
+          <span className="truncate">{data.fullPeriod}</span>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+            {data.shortLabel}
+          </span>
+        </div>
+        <div className="space-y-1.5 pt-0.5">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-zinc-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
+              累计掌握总量:
+            </span>
+            <span className="font-mono font-bold text-emerald-400 text-sm">
+              {data.cumulativeMastered} <span className="text-[10px] font-normal text-zinc-500">词</span>
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-zinc-400">
+              <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]" />
+              当期新增掌握:
+            </span>
+            <span className="font-mono font-bold text-amber-400 text-sm">
+              +{data.newMastered} <span className="text-[10px] font-normal text-zinc-500">词</span>
+            </span>
+          </div>
+          {data.reviewCount > 0 && (
+            <div className="flex items-center justify-between text-[11px] text-zinc-400 pt-1 border-t border-zinc-900">
+              <span className="flex items-center gap-1 text-zinc-500">
+                <Activity size={12} className="text-cyan-400" />
+                复习记忆频次:
+              </span>
+              <span className="font-mono text-zinc-300">
+                {data.reviewCount} 词次
+              </span>
+            </div>
+          )}
+          {data.studyMinutes > 0 && (
+            <div className="flex items-center justify-between text-[11px] text-zinc-400">
+              <span className="flex items-center gap-1 text-zinc-500">
+                <Clock size={12} className="text-amber-400" />
+                有效学习时长:
+              </span>
+              <span className="font-mono text-zinc-300">
+                {data.studyMinutes} 分钟
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 export function StatsModal({ isOpen, onClose, stats, words = [] }: StatsModalProps) {
   const heatmapContainerRef = useRef<HTMLDivElement>(null);
   const [selectedDay, setSelectedDay] = useState<{
@@ -47,9 +144,301 @@ export function StatsModal({ isOpen, onClose, stats, words = [] }: StatsModalPro
     minutes: number;
   } | null>(null);
 
+  // Mastered words trend controls
+  const [trendPeriod, setTrendPeriod] = useState<'week' | 'month' | 'day'>('week');
+  const [trendMetric, setTrendMetric] = useState<'both' | 'cumulative' | 'new'>('both');
+
   const today = useMemo(() => new Date(), []);
   const todayStr = useMemo(() => today.toISOString().split('T')[0], [today]);
   const todayStats = stats.daily[todayStr] || { count: 0, minutes: 0, seconds: 0 };
+
+  // Mastered words calculation & date distribution
+  const masteredWords = useMemo(() => {
+    return words.filter(w => w.is_mastered === true || w.listName === 'Mastered Words');
+  }, [words]);
+  const totalMasteredCount = masteredWords.length;
+  const totalWordsCount = words.length;
+
+  // Track words mastered by date
+  const wordsMasteredByDate = useMemo(() => {
+    const map: Record<string, number> = {};
+    const unassigned: WordState[] = [];
+
+    masteredWords.forEach(w => {
+      let dStr: string | null = null;
+      if (w.mastered_time) {
+        dStr = formatLocalDate(new Date(w.mastered_time));
+      } else if (w.last_review_time) {
+        dStr = formatLocalDate(new Date(w.last_review_time));
+      }
+
+      if (dStr) {
+        map[dStr] = (map[dStr] || 0) + 1;
+      } else {
+        unassigned.push(w);
+      }
+    });
+
+    // Also factor in stats.daily[dateStr]?.masteredCount
+    Object.keys(stats.daily || {}).forEach(dateStr => {
+      const explicit = stats.daily[dateStr]?.masteredCount || 0;
+      if (explicit > (map[dateStr] || 0)) {
+        map[dateStr] = explicit;
+      }
+    });
+
+    // If there are unassigned words without timestamp, spread them gracefully
+    // over active learning days, or place on todayStr
+    if (unassigned.length > 0) {
+      const activeDates = Object.keys(stats.daily || {})
+        .filter(d => (stats.daily[d]?.count || 0) > 0)
+        .sort();
+
+      if (activeDates.length > 0) {
+        unassigned.forEach((_, idx) => {
+          const targetDate = activeDates[idx % activeDates.length];
+          map[targetDate] = (map[targetDate] || 0) + 1;
+        });
+      } else {
+        map[todayStr] = (map[todayStr] || 0) + unassigned.length;
+      }
+    }
+
+    return map;
+  }, [masteredWords, stats.daily, todayStr]);
+
+  const getMasteredInRange = useCallback((startDateStr: string, endDateStr: string) => {
+    let count = 0;
+    Object.keys(wordsMasteredByDate).forEach(d => {
+      if (d >= startDateStr && d <= endDateStr) {
+        count += wordsMasteredByDate[d];
+      }
+    });
+    return count;
+  }, [wordsMasteredByDate]);
+
+  const getMasteredBefore = useCallback((endDateStr: string) => {
+    let count = 0;
+    Object.keys(wordsMasteredByDate).forEach(d => {
+      if (d <= endDateStr) {
+        count += wordsMasteredByDate[d];
+      }
+    });
+    return count;
+  }, [wordsMasteredByDate]);
+
+  // Weekly trend points (Last 8 weeks)
+  const weeklyTrendData = useMemo(() => {
+    const points: TrendPoint[] = [];
+    const now = new Date();
+    const dayOfWeek = (now.getDay() + 6) % 7; // Monday = 0, Sunday = 6
+    const thisMonday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek);
+
+    let runningCum = 0;
+
+    for (let i = 7; i >= 0; i--) {
+      const weekMonday = new Date(thisMonday.getFullYear(), thisMonday.getMonth(), thisMonday.getDate() - (i * 7));
+      const weekSunday = new Date(weekMonday.getFullYear(), weekMonday.getMonth(), weekMonday.getDate() + 6);
+
+      const startStr = formatLocalDate(weekMonday);
+      const endStr = formatLocalDate(weekSunday);
+
+      let reviews = 0;
+      let minutes = 0;
+      const cur = new Date(weekMonday);
+      while (cur <= weekSunday) {
+        const curStr = formatLocalDate(cur);
+        const dayStat = stats.daily[curStr];
+        if (dayStat) {
+          reviews += dayStat.count || 0;
+          const sec = dayStat.seconds ?? (dayStat.minutes ? dayStat.minutes * 60 : 0);
+          minutes += sec > 0 ? Math.round(sec / 60) : (dayStat.count > 0 ? Math.round(dayStat.count * 0.8) : 0);
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+
+      const newThisPeriod = getMasteredInRange(startStr, endStr);
+      const cumBefore = getMasteredBefore(endStr);
+      runningCum = Math.max(runningCum, cumBefore);
+
+      const isCurrentWeek = i === 0;
+      const weekNum = 8 - i;
+      const startDisplay = `${weekMonday.getMonth() + 1}/${weekMonday.getDate()}`;
+      const endDisplay = `${weekSunday.getMonth() + 1}/${weekSunday.getDate()}`;
+      const label = isCurrentWeek ? '本周' : `第${weekNum}周 (${startDisplay})`;
+      const shortLabel = isCurrentWeek ? '本周' : `${startDisplay}`;
+      const fullPeriod = `${startStr} ~ ${endStr}${isCurrentWeek ? ' (当前周)' : ''}`;
+
+      points.push({
+        label,
+        shortLabel,
+        fullPeriod,
+        cumulativeMastered: runningCum,
+        newMastered: newThisPeriod,
+        reviewCount: reviews,
+        studyMinutes: minutes,
+        startDate: startStr,
+        endDate: endStr,
+      });
+    }
+
+    if (points.length > 0 && points[points.length - 1].cumulativeMastered < totalMasteredCount) {
+      points[points.length - 1].cumulativeMastered = totalMasteredCount;
+    }
+
+    return points;
+  }, [wordsMasteredByDate, stats.daily, totalMasteredCount, getMasteredInRange, getMasteredBefore]);
+
+  // Monthly trend points (Last 6 months)
+  const monthlyTrendData = useMemo(() => {
+    const points: TrendPoint[] = [];
+    const now = new Date();
+    let runningCum = 0;
+
+    for (let i = 5; i >= 0; i--) {
+      const year = now.getFullYear();
+      const monthIndex = now.getMonth() - i;
+      const targetDate = new Date(year, monthIndex, 1);
+      const actualYear = targetDate.getFullYear();
+      const actualMonth = targetDate.getMonth();
+
+      const start = new Date(actualYear, actualMonth, 1);
+      const end = new Date(actualYear, actualMonth + 1, 0);
+
+      const startStr = formatLocalDate(start);
+      const endStr = formatLocalDate(end);
+
+      let reviews = 0;
+      let minutes = 0;
+      const cur = new Date(start);
+      while (cur <= end) {
+        const curStr = formatLocalDate(cur);
+        const dayStat = stats.daily[curStr];
+        if (dayStat) {
+          reviews += dayStat.count || 0;
+          const sec = dayStat.seconds ?? (dayStat.minutes ? dayStat.minutes * 60 : 0);
+          minutes += sec > 0 ? Math.round(sec / 60) : (dayStat.count > 0 ? Math.round(dayStat.count * 0.8) : 0);
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+
+      const newThisPeriod = getMasteredInRange(startStr, endStr);
+      const cumBefore = getMasteredBefore(endStr);
+      runningCum = Math.max(runningCum, cumBefore);
+
+      const isCurrentMonth = i === 0;
+      const label = isCurrentMonth ? '本月' : `${actualMonth + 1}月`;
+      const shortLabel = isCurrentMonth ? '本月' : `${actualMonth + 1}月`;
+      const fullPeriod = `${actualYear}年${actualMonth + 1}月${isCurrentMonth ? ' (当前月)' : ''}`;
+
+      points.push({
+        label,
+        shortLabel,
+        fullPeriod,
+        cumulativeMastered: runningCum,
+        newMastered: newThisPeriod,
+        reviewCount: reviews,
+        studyMinutes: minutes,
+        startDate: startStr,
+        endDate: endStr,
+      });
+    }
+
+    if (points.length > 0 && points[points.length - 1].cumulativeMastered < totalMasteredCount) {
+      points[points.length - 1].cumulativeMastered = totalMasteredCount;
+    }
+
+    return points;
+  }, [wordsMasteredByDate, stats.daily, totalMasteredCount, getMasteredInRange, getMasteredBefore]);
+
+  // Daily 30-day trend points
+  const dailyTrendData = useMemo(() => {
+    const points: TrendPoint[] = [];
+    let runningCum = 0;
+
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = formatLocalDate(d);
+      const displayDate = d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+
+      const dayStat = stats.daily[dateStr];
+      const reviews = dayStat?.count || 0;
+      const sec = dayStat?.seconds ?? (dayStat?.minutes ? dayStat.minutes * 60 : 0);
+      const minutes = sec > 0 ? Math.round(sec / 60) : (reviews > 0 ? Math.round(reviews * 0.8) : 0);
+
+      const newThisPeriod = wordsMasteredByDate[dateStr] || 0;
+      const cumBefore = getMasteredBefore(dateStr);
+      runningCum = Math.max(runningCum, cumBefore);
+
+      const isToday = i === 0;
+      points.push({
+        label: isToday ? '今天' : displayDate,
+        shortLabel: displayDate,
+        fullPeriod: dateStr + (isToday ? ' (今日)' : ''),
+        cumulativeMastered: runningCum,
+        newMastered: newThisPeriod,
+        reviewCount: reviews,
+        studyMinutes: minutes,
+        startDate: dateStr,
+        endDate: dateStr,
+      });
+    }
+
+    if (points.length > 0 && points[points.length - 1].cumulativeMastered < totalMasteredCount) {
+      points[points.length - 1].cumulativeMastered = totalMasteredCount;
+    }
+
+    return points;
+  }, [wordsMasteredByDate, stats.daily, totalMasteredCount, getMasteredBefore]);
+
+  const currentTrendData = useMemo(() => {
+    if (trendPeriod === 'week') return weeklyTrendData;
+    if (trendPeriod === 'month') return monthlyTrendData;
+    return dailyTrendData;
+  }, [trendPeriod, weeklyTrendData, monthlyTrendData, dailyTrendData]);
+
+  const progressSummary = useMemo(() => {
+    const currentPoint = currentTrendData[currentTrendData.length - 1] || { cumulativeMastered: 0, newMastered: 0 };
+    const prevPoint = currentTrendData[currentTrendData.length - 2] || { cumulativeMastered: 0, newMastered: 0 };
+
+    const currentPeriodNew = currentPoint.newMastered;
+    const previousPeriodNew = prevPoint.newMastered;
+    const diffFromPrev = currentPeriodNew - previousPeriodNew;
+
+    const totalNewInWindow = currentTrendData.reduce((acc, p) => acc + p.newMastered, 0);
+    const avgVelocity = currentTrendData.length > 0
+      ? (totalNewInWindow / currentTrendData.length).toFixed(1)
+      : '0';
+
+    const masteryRate = totalWordsCount > 0
+      ? ((totalMasteredCount / totalWordsCount) * 100).toFixed(1)
+      : '0';
+
+    let feedbackText = '稳扎稳打 · 抗遗忘转化中';
+    let feedbackEmoji = '🌱';
+    if (totalMasteredCount >= 50 || currentPeriodNew >= 15) {
+      feedbackText = '极速突破 · 长期记忆成网';
+      feedbackEmoji = '🚀';
+    } else if (totalMasteredCount >= 10 || currentPeriodNew >= 5) {
+      feedbackText = '稳健精进 · 形成飞轮效应';
+      feedbackEmoji = '🔥';
+    } else if (totalMasteredCount > 0) {
+      feedbackText = '初露锋芒 · 迈出关键一步';
+      feedbackEmoji = '✨';
+    }
+
+    return {
+      totalMastered: totalMasteredCount,
+      masteryRate,
+      currentPeriodNew,
+      diffFromPrev,
+      avgVelocity,
+      feedbackText,
+      feedbackEmoji,
+      periodUnit: trendPeriod === 'week' ? '周' : (trendPeriod === 'month' ? '月' : '天'),
+    };
+  }, [currentTrendData, totalMasteredCount, totalWordsCount, trendPeriod]);
 
   useEffect(() => {
     if (isOpen && heatmapContainerRef.current) {
@@ -713,12 +1102,257 @@ export function StatsModal({ isOpen, onClose, stats, words = [] }: StatsModalPro
                 </div>
               </div>
 
+              {/* Feature: Mastered Words Growth Trend Line Chart (Weekly / Monthly) */}
+              <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-3xl p-6 sm:p-7 space-y-6">
+                {/* Section Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <div className="p-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
+                        <LineChartIcon size={18} />
+                      </div>
+                      周/月掌握单词增长趋势折线图
+                      <span className="text-[11px] font-normal px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        Mastery Growth Trend
+                      </span>
+                    </h3>
+                    <p className="text-xs text-zinc-400">
+                      量化艾宾浩斯抗遗忘记忆沉淀 · 直观展现掌握单词总量的持续攀升轨迹
+                    </p>
+                  </div>
+
+                  {/* Switch Controls */}
+                  <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                    {/* Timeframe switch */}
+                    <div className="inline-flex items-center bg-zinc-950/70 border border-zinc-800 p-1 rounded-2xl">
+                      <button
+                        type="button"
+                        onClick={() => setTrendPeriod('week')}
+                        className={`px-3 py-1 text-xs font-medium rounded-xl transition-all duration-200 ${
+                          trendPeriod === 'week'
+                            ? 'bg-emerald-500 text-zinc-950 font-bold shadow-md shadow-emerald-500/20'
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        按周趋势
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTrendPeriod('month')}
+                        className={`px-3 py-1 text-xs font-medium rounded-xl transition-all duration-200 ${
+                          trendPeriod === 'month'
+                            ? 'bg-emerald-500 text-zinc-950 font-bold shadow-md shadow-emerald-500/20'
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        按月趋势
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTrendPeriod('day')}
+                        className={`px-3 py-1 text-xs font-medium rounded-xl transition-all duration-200 ${
+                          trendPeriod === 'day'
+                            ? 'bg-emerald-500 text-zinc-950 font-bold shadow-md shadow-emerald-500/20'
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        近30天
+                      </button>
+                    </div>
+
+                    {/* Metric filter pills */}
+                    <div className="inline-flex items-center bg-zinc-950/70 border border-zinc-800 p-1 rounded-2xl">
+                      <button
+                        type="button"
+                        onClick={() => setTrendMetric('both')}
+                        className={`px-2.5 py-1 text-[11px] font-medium rounded-xl transition-all ${
+                          trendMetric === 'both'
+                            ? 'bg-zinc-800 text-white font-semibold'
+                            : 'text-zinc-400 hover:text-zinc-300'
+                        }`}
+                      >
+                        双线对比
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTrendMetric('cumulative')}
+                        className={`px-2.5 py-1 text-[11px] font-medium rounded-xl transition-all ${
+                          trendMetric === 'cumulative'
+                            ? 'bg-zinc-800 text-emerald-400 font-semibold'
+                            : 'text-zinc-400 hover:text-zinc-300'
+                        }`}
+                      >
+                        累计总量
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTrendMetric('new')}
+                        className={`px-2.5 py-1 text-[11px] font-medium rounded-xl transition-all ${
+                          trendMetric === 'new'
+                            ? 'bg-zinc-800 text-amber-400 font-semibold'
+                            : 'text-zinc-400 hover:text-zinc-300'
+                        }`}
+                      >
+                        当期新增
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Progress Milestone KPI Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-zinc-950/60 border border-zinc-800/80 p-4 rounded-2xl space-y-1">
+                    <div className="flex items-center justify-between text-xs text-zinc-400">
+                      <span>累计掌握单词</span>
+                      <CheckCircle2 size={15} className="text-emerald-400" />
+                    </div>
+                    <div className="text-2xl font-bold font-mono text-white flex items-baseline gap-1">
+                      {progressSummary.totalMastered}
+                      <span className="text-xs font-sans font-normal text-zinc-400">词</span>
+                    </div>
+                    <div className="text-[11px] text-zinc-400">
+                      占总词库 <span className="font-mono text-emerald-400 font-semibold">{progressSummary.masteryRate}%</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-zinc-950/60 border border-zinc-800/80 p-4 rounded-2xl space-y-1">
+                    <div className="flex items-center justify-between text-xs text-zinc-400">
+                      <span>本{progressSummary.periodUnit}新增掌握</span>
+                      <Sparkles size={15} className="text-amber-400" />
+                    </div>
+                    <div className="text-2xl font-bold font-mono text-amber-400 flex items-baseline gap-1">
+                      +{progressSummary.currentPeriodNew}
+                      <span className="text-xs font-sans font-normal text-zinc-400">词</span>
+                    </div>
+                    <div className="text-[11px] text-zinc-400">
+                      {progressSummary.diffFromPrev >= 0 ? (
+                        <span className="text-emerald-400 font-mono">较上期 +{progressSummary.diffFromPrev} 词 ↑</span>
+                      ) : (
+                        <span className="text-zinc-400 font-mono">较上期 {progressSummary.diffFromPrev} 词</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="bg-zinc-950/60 border border-zinc-800/80 p-4 rounded-2xl space-y-1">
+                    <div className="flex items-center justify-between text-xs text-zinc-400">
+                      <span>平均掌握增速</span>
+                      <TrendingUp size={15} className="text-cyan-400" />
+                    </div>
+                    <div className="text-2xl font-bold font-mono text-cyan-400 flex items-baseline gap-1">
+                      +{progressSummary.avgVelocity}
+                      <span className="text-xs font-sans font-normal text-zinc-400">词/{progressSummary.periodUnit}</span>
+                    </div>
+                    <div className="text-[11px] text-zinc-400 truncate">
+                      周期均值稳定沉淀
+                    </div>
+                  </div>
+
+                  <div className="bg-zinc-950/60 border border-zinc-800/80 p-4 rounded-2xl space-y-1">
+                    <div className="flex items-center justify-between text-xs text-zinc-400">
+                      <span>成长进步评价</span>
+                      <Milestone size={15} className="text-indigo-400" />
+                    </div>
+                    <div className="text-sm sm:text-base font-bold text-white pt-1 truncate">
+                      {progressSummary.feedbackEmoji} {progressSummary.feedbackText}
+                    </div>
+                    <div className="text-[11px] text-zinc-400 truncate">
+                      抗遗忘沉淀飞轮
+                    </div>
+                  </div>
+                </div>
+
+                {/* Line Chart Canvas */}
+                <div className="h-64 sm:h-72 w-full bg-zinc-950/70 border border-zinc-900 p-4 sm:p-5 rounded-2xl relative shadow-inner">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={currentTrendData} margin={{ top: 15, right: 10, left: -20, bottom: 5 }}>
+                      <defs>
+                        <linearGradient id="masteredGrowthGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.28} />
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} opacity={0.6} />
+                      <XAxis 
+                        dataKey="shortLabel" 
+                        stroke="#71717a" 
+                        fontSize={10} 
+                        tickLine={false} 
+                        axisLine={false}
+                        interval={trendPeriod === 'day' ? 3 : 0}
+                      />
+                      <YAxis 
+                        stroke="#71717a" 
+                        fontSize={10} 
+                        tickLine={false} 
+                        axisLine={false}
+                        allowDecimals={false}
+                        orientation="right"
+                      />
+                      <Tooltip content={<CustomTrendTooltip />} />
+                      {(trendMetric === 'both' || trendMetric === 'cumulative') && (
+                        <Area 
+                          type="monotone" 
+                          dataKey="cumulativeMastered" 
+                          name="累计掌握总量" 
+                          fill="url(#masteredGrowthGrad)" 
+                          stroke="none" 
+                        />
+                      )}
+                      {(trendMetric === 'both' || trendMetric === 'cumulative') && (
+                        <Line 
+                          type="monotone" 
+                          dataKey="cumulativeMastered" 
+                          name="累计掌握总量 (词)" 
+                          stroke="#10b981" 
+                          strokeWidth={3} 
+                          dot={{ r: 3.5, fill: '#10b981', stroke: '#052e16', strokeWidth: 1.5 }}
+                          activeDot={{ r: 6, fill: '#34d399', stroke: '#ffffff', strokeWidth: 2 }}
+                        />
+                      )}
+                      {(trendMetric === 'both' || trendMetric === 'new') && (
+                        <Line 
+                          type="monotone" 
+                          dataKey="newMastered" 
+                          name="当期新增掌握 (词)" 
+                          stroke="#f59e0b" 
+                          strokeWidth={2} 
+                          strokeDasharray="4 4"
+                          dot={{ r: 3, fill: '#f59e0b', stroke: '#451a03', strokeWidth: 1.5 }}
+                          activeDot={{ r: 5, fill: '#fbbf24', stroke: '#ffffff', strokeWidth: 2 }}
+                        />
+                      )}
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Motivational Footnote */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs text-zinc-400 bg-zinc-950/40 border border-zinc-900 px-4 py-2.5 rounded-xl gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
+                    <span>绿色实线：累计掌握单词总量（稳步上升量化长期进步）</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                    <span>琥珀色虚线：当期新增掌握词数（反映阶段记忆突破爆发力）</span>
+                  </div>
+                </div>
+
+                {totalMasteredCount === 0 && (
+                  <div className="text-xs bg-amber-500/10 border border-amber-500/20 text-amber-300 p-3 rounded-2xl flex items-center gap-2">
+                    <Sparkles size={16} className="shrink-0 text-amber-400" />
+                    <span>
+                      提示：在拼写练习或词根侦探游戏中连续答对 3~5 次，或完成艾宾浩斯复习周期，系统会自动判定掌握并点亮此折线图！
+                    </span>
+                  </div>
+                )}
+              </div>
+
               {/* Bar Chart Section (Recent 30 Days) */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between px-2">
                   <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-2">
                     <TrendingUp size={16} className="text-emerald-400" />
-                    最近 30 天记忆趋势
+                    最近 30 天每日记忆活跃度
                   </h3>
                   <div className="text-xs text-zinc-400 font-mono">Daily Memorized Count</div>
                 </div>

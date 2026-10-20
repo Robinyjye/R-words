@@ -29,6 +29,7 @@ export interface WordState extends WordData {
   is_completed_dictation?: boolean;
   ebbinghaus_stage?: number; // 0 to N
   is_mastered?: boolean;
+  mastered_time?: number | null;
   game_correct_streak?: number;
   peek_penalty?: boolean;
   dictation_correct_streak?: number;
