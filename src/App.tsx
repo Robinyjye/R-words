@@ -2652,23 +2652,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Return Button if jumped via search or modal */}
-            {jumpSource && (
-              <button
-                type="button"
-                onClick={handleReturnToPreviousWord}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all shadow-sm active:scale-95 cursor-pointer shrink-0 animate-in fade-in ${
-                  jumpSource.sourceType === 'search'
-                    ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-white border border-amber-500/40 shadow-amber-950/30'
-                    : 'bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 hover:text-white border border-indigo-500/40 shadow-indigo-950/30'
-                }`}
-                title={`返回此前学习单词: "${jumpSource.previousWord.word}" (快捷键: Esc)`}
-              >
-                <ArrowLeft size={13} className="shrink-0" />
-                <span className="font-mono font-bold max-w-[80px] sm:max-w-[110px] truncate">{jumpSource.previousWord.word}</span>
-                <span className="text-[10px] opacity-80 hidden xs:inline">返回</span>
-              </button>
-            )}
 
             {/* Search Bar with Autocomplete Dropdown */}
             <div ref={searchContainerRef} className="relative w-full max-w-[170px] sm:max-w-[210px] hidden md:block">
