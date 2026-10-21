@@ -1393,7 +1393,7 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isGameMode || gameStatus !== 'playing') return;
 
-      if (e.code === 'Space' || e.key === ' ') {
+      if (e.code === 'Space' || e.key === ' ' || e.key === 'Control' || e.code === 'ControlLeft' || e.code === 'ControlRight') {
         e.preventDefault();
         if (e.repeat) return;
         startPeekingCurrentBlank();
@@ -1425,7 +1425,7 @@ export default function App() {
 
     const handleKeyUp = (e: KeyboardEvent) => {
       if (!isGameMode) return;
-      if (e.code === 'Space' || e.key === ' ') {
+      if (e.code === 'Space' || e.key === ' ' || e.key === 'Control' || e.code === 'ControlLeft' || e.code === 'ControlRight') {
         e.preventDefault();
         stopPeeking();
       }
@@ -1585,8 +1585,8 @@ export default function App() {
     }
   }, [currentWord, isDictationMode, peekedRootThisWord]);
 
-  // Handle Space key in dictation mode: remove word occlusion (isHinted) and root occlusion (showDictationRoot)
-  const handleDictationSpaceReveal = useCallback(() => {
+  // Handle Ctrl key in dictation mode: remove word occlusion (isHinted) and root occlusion (showDictationRoot)
+  const handleDictationOcclusionReveal = useCallback(() => {
     if (!currentWord || !isDictationMode) return;
 
     const hasRootInfo = !!(currentWord.prefix || currentWord.root_core || currentWord.suffix);
@@ -1634,7 +1634,7 @@ export default function App() {
         });
       }
     } else {
-      // Both are already revealed -> Space toggles them back to occluded
+      // Both are already revealed -> Ctrl toggles them back to occluded
       setIsHinted(false);
       setShowDictationRoot(false);
     }
@@ -1677,22 +1677,36 @@ export default function App() {
         return;
       }
 
-      // Handle Ctrl key to enter/toggle root association page (词根关联页面)
+      // Handle Ctrl key: in dictation mode, press Ctrl to remove word and root occlusion!
       if (e.key === 'Control' || e.code === 'ControlLeft' || e.code === 'ControlRight') {
         e.preventDefault();
-        if (selectedRootInfo) {
-          setSelectedRootInfo(null);
+        if (isDictationMode) {
+          handleDictationOcclusionReveal();
           return;
         }
-        if (currentWord.root_core) {
-          setSelectedRootInfo({
-            rootCore: currentWord.root_core,
-            rootMeaning: currentWord.root_meaning,
-          });
-        } else {
-          showToast(`当前单词 "${currentWord.word}" 暂无词根数据`);
-        }
         return;
+      }
+
+      // Handle Space: enter/toggle root association page (词根关联构词图)
+      if (e.key === ' ' || e.code === 'Space') {
+        const targetWord = currentWord.word;
+        // If the next character to type is NOT a space
+        if (targetWord[input.length] !== ' ') {
+          e.preventDefault();
+          if (selectedRootInfo) {
+            setSelectedRootInfo(null);
+            return;
+          }
+          if (currentWord.root_core) {
+            setSelectedRootInfo({
+              rootCore: currentWord.root_core,
+              rootMeaning: currentWord.root_meaning,
+            });
+          } else {
+            showToast(`当前单词 "${currentWord.word}" 暂无词根数据`);
+          }
+          return;
+        }
       }
 
       // If root association modal is open, don't handle background study navigation
@@ -1735,20 +1749,6 @@ export default function App() {
         return;
       }
 
-      // Handle Space: in dictation mode, press Space to remove word and root occlusion!
-      if (e.key === ' ' || e.code === 'Space') {
-        const targetWord = currentWord.word;
-        // If the next character to type is NOT a space
-        if (targetWord[input.length] !== ' ') {
-          e.preventDefault();
-          if (isDictationMode) {
-            handleDictationSpaceReveal();
-            return;
-          }
-          return;
-        }
-      }
-
       // Handle letter input (only allow letters and spaces/hyphens if they are in the word)
       if (e.key.length === 1) {
         if (isAutoPlaying) {
@@ -1774,7 +1774,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip, isGameMode, handleDictationPeekRoot, handleDictationSpaceReveal, handleSetConfidence, isThesaurusOpen, selectedRootInfo, showToast]);
+  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip, isGameMode, handleDictationPeekRoot, handleDictationOcclusionReveal, handleSetConfidence, isThesaurusOpen, selectedRootInfo, showToast]);
 
   // Check for completion
   useEffect(() => {
@@ -2966,7 +2966,7 @@ export default function App() {
                         e.preventDefault();
                         handleDictationPeekHint();
                       }}
-                      title={isHinted ? "点击隐藏提示" : "点击查看提示（连对次数将 -1）"}
+                      title={isHinted ? "点击隐藏提示 (快捷键: Ctrl)" : "点击查看提示（连对次数将 -1，快捷键: Ctrl）"}
                     >
                       <Headphones size={64} />
                     </motion.div>
@@ -3003,7 +3003,7 @@ export default function App() {
                         handleDictationPeekRoot();
                       }}
                       className="font-mono text-zinc-500 hover:text-zinc-300 text-xs inline-flex items-center gap-1.5 py-1 px-3 bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700 rounded-full transition-all cursor-pointer group shadow-sm select-none"
-                      title="听写防剧透，点击偷看词根提示（连对次数将 -1）"
+                      title="听写防剧透，点击偷看词根提示（连对次数将 -1，快捷键: Ctrl）"
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-indigo-500/60 group-hover:bg-indigo-400 transition-colors" />
                       <span>词根已遮挡 · 点击偷看 (-1)</span>
@@ -3027,7 +3027,7 @@ export default function App() {
                           });
                         }}
                         className="relative inline-flex items-center gap-1 px-2.5 py-0.5 mr-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 hover:text-indigo-200 transition-all cursor-pointer group shadow-sm text-sm font-mono select-none"
-                        title={`该词根共收录 ${currentWordSameRootCount} 个单词，点击或按 Ctrl 键进入构词关联图`}
+                        title={`该词根共收录 ${currentWordSameRootCount} 个单词，点击或按 空格 键进入构词关联图`}
                       >
                         <Sparkles size={11} className="text-indigo-400 group-hover:scale-110 transition-transform" />
                         <span className="font-bold underline decoration-indigo-400/50 underline-offset-2">
@@ -3909,7 +3909,7 @@ export default function App() {
                           ? 'bg-amber-500 text-zinc-950 border-amber-400 scale-95 shadow-lg shadow-amber-500/20' 
                           : 'bg-zinc-900 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 border-zinc-800'
                       }`}
-                      title="按住空格键或按住按钮显示当前字母，松开隐藏"
+                      title="按住 Ctrl 键或空格键，或按住按钮显示当前字母，松开隐藏"
                     >
                       <Eye size={20} className={peekedBlankIdx !== null ? 'text-zinc-950' : 'text-zinc-400'} />
                     </button>

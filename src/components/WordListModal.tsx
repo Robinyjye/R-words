@@ -69,7 +69,7 @@ export const WordListModal: React.FC<WordListModalProps> = ({
         return;
       }
 
-      if (e.key === ' ' || e.code === 'Space') {
+      if (e.key === ' ' || e.code === 'Space' || e.key === 'Control' || e.code === 'ControlLeft' || e.code === 'ControlRight') {
         e.preventDefault();
         // Remove word occlusion (把单词的遮挡拿掉)
         if (hideWord) {
@@ -350,7 +350,7 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                 }`}
               >
                 {hideWord ? <EyeOff size={13} className="text-amber-400" /> : <Eye size={13} />}
-                <span>{hideWord ? '已隐藏单词 (空格显示)' : '隐藏单词 (空格)'}</span>
+                <span>{hideWord ? '已隐藏单词 (Ctrl/空格显示)' : '隐藏单词 (Ctrl/空格)'}</span>
               </button>
 
               {/* Global Meaning Peek Toggle */}
@@ -555,7 +555,7 @@ export const WordListModal: React.FC<WordListModalProps> = ({
                             className="px-2.5 py-0.5 rounded-lg bg-zinc-800/90 hover:bg-zinc-700 text-zinc-400 hover:text-amber-300 font-mono text-sm border border-zinc-700/60 transition-colors duration-100 flex items-center gap-1.5 cursor-pointer group shadow-inner"
                           >
                             <span className="tracking-widest select-none">••••••••</span>
-                            <span className="text-[10px] text-zinc-500 group-hover:text-amber-300 font-sans">偷看 (空格)</span>
+                            <span className="text-[10px] text-zinc-500 group-hover:text-amber-300 font-sans">偷看 (Ctrl/空格)</span>
                           </button>
                         ) : (
                           <div className="flex items-center gap-1.5">

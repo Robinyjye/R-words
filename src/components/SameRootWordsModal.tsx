@@ -33,10 +33,11 @@ export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
     meaning?: string | null;
   } | null>(null);
 
-  // Handle ESC or Ctrl key to close
+  // Handle ESC, Space or Ctrl key to close
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' || e.key === 'Control') {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'Escape' || e.key === ' ' || e.code === 'Space' || e.key === 'Control') {
         onClose();
       }
     };
@@ -455,7 +456,7 @@ export const SameRootWordsModal: React.FC<SameRootWordsModalProps> = ({
         {/* Footer */}
         <div className="p-3.5 px-6 border-t border-zinc-900 bg-zinc-950/80 flex items-center justify-between text-xs text-zinc-500 font-mono">
           <span>词根串联学习法 · 相同词根聚类巩固</span>
-          <span>按 ESC / Ctrl 或点击外部可关闭</span>
+          <span>按 ESC / 空格 或点击外部可关闭</span>
         </div>
       </div>
     </div>
