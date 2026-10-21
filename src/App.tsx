@@ -207,12 +207,38 @@ export default function App() {
   const [peekedRootThisWord, setPeekedRootThisWord] = useState(false);
   const [sessionErrors, setSessionErrors] = useState<Set<string>>(new Set());
   
-  // Jump Source state for returning after clicking "学习" in modals
+  // Jump Source state for returning after clicking "学习" in modals or searching
   const [jumpSource, setJumpSource] = useState<{
     previousWord: WordState;
     previousListName?: string;
     rootInfo?: { rootCore: string; rootMeaning?: string } | null;
+    sourceType?: 'modal' | 'search' | 'thesaurus' | 'root';
+    searchQuery?: string;
   } | null>(null);
+
+  const [jumpSourceStack, setJumpSourceStack] = useState<Array<{
+    previousWord: WordState;
+    previousListName?: string;
+    rootInfo?: { rootCore: string; rootMeaning?: string } | null;
+    sourceType?: 'modal' | 'search' | 'thesaurus' | 'root';
+    searchQuery?: string;
+  }>>([]);
+
+  const pushJumpSource = useCallback((source: {
+    previousWord: WordState;
+    previousListName?: string;
+    rootInfo?: { rootCore: string; rootMeaning?: string } | null;
+    sourceType?: 'modal' | 'search' | 'thesaurus' | 'root';
+    searchQuery?: string;
+  }) => {
+    setJumpSource(source);
+    setJumpSourceStack(prev => [...prev, source]);
+  }, []);
+
+  const handleDismissJumpSource = useCallback(() => {
+    setJumpSource(null);
+    setJumpSourceStack([]);
+  }, []);
 
   const handleReturnToPreviousWord = useCallback(() => {
     if (!jumpSource) return;
@@ -221,11 +247,22 @@ export default function App() {
     if (previousListName && previousListName !== activeList) {
       setActiveList(previousListName);
     }
+    let isCompleted = false;
+    if (isEbbinghausMode) {
+      isCompleted = !isWordDue(targetWord, isDictationMode, Date.now());
+    } else {
+      isCompleted = isDictationMode ? targetWord.is_completed_dictation : targetWord.is_completed_normal;
+    }
+    setIsViewingHistory(isCompleted);
     setInput('');
-    setJumpSource(null);
+    setJumpSourceStack(prev => {
+      const nextStack = prev.slice(0, -1);
+      setJumpSource(nextStack.length > 0 ? nextStack[nextStack.length - 1] : null);
+      return nextStack;
+    });
     speakWordAndExample(targetWord.word, targetWord.example_sentence);
-    showToast(`已返回原单词: "${targetWord.word}"`);
-  }, [jumpSource, activeList, showToast]);
+    showToast(`已返回此前学习单词: "${targetWord.word}"`);
+  }, [jumpSource, activeList, isEbbinghausMode, isDictationMode, showToast]);
   
   useEffect(() => {
     setHasError(false);
@@ -655,7 +692,17 @@ export default function App() {
   }, [currentWord?.id]);
 
   // Jump to word selected from dropdown
-  const handleSelectWordFromDropdown = useCallback((matchedWord: WordState) => {
+  const handleSelectWordFromDropdown = useCallback((matchedWord: WordState, searchedQuery?: string) => {
+    if (currentWord && currentWord.id !== matchedWord.id) {
+      pushJumpSource({
+        previousWord: currentWord,
+        previousListName: activeList,
+        rootInfo: null,
+        sourceType: 'search',
+        searchQuery: searchedQuery || searchTerm.trim() || undefined,
+      });
+      setHistory(prev => [...prev, currentWord.id]);
+    }
     setActiveList(matchedWord.listName || 'Default List');
     setCurrentWord(matchedWord);
     let isCompleted = false;
@@ -669,7 +716,9 @@ export default function App() {
     setSearchTerm('');
     setIsSearchDropdownOpen(false);
     setSelectedDropdownIndex(-1);
-  }, [isEbbinghausMode, isDictationMode]);
+    speakWordAndExample(matchedWord.word, matchedWord.example_sentence);
+    showToast(`已搜索跳转至: "${matchedWord.word}"`);
+  }, [currentWord, activeList, isEbbinghausMode, isDictationMode, searchTerm, pushJumpSource, showToast]);
 
   // Only execute online query / word enrichment when user explicitly clicks search or presses Enter
   const handleSearch = useCallback(async () => {
@@ -683,7 +732,7 @@ export default function App() {
     
     if (existingWord) {
       // If word exists, switch to its list and set as current word
-      handleSelectWordFromDropdown(existingWord);
+      handleSelectWordFromDropdown(existingWord, normalizedTerm);
     } else {
       setIsSearching(true);
       try {
@@ -715,6 +764,17 @@ export default function App() {
           listName: 'search records'
         };
         
+        if (currentWord) {
+          pushJumpSource({
+            previousWord: currentWord,
+            previousListName: activeList,
+            rootInfo: null,
+            sourceType: 'search',
+            searchQuery: normalizedTerm,
+          });
+          setHistory(prev => [...prev, currentWord.id]);
+        }
+
         const updatedWords = [...words, newWord];
         setWords(updatedWords);
         saveWords(updatedWords);
@@ -723,6 +783,8 @@ export default function App() {
         setIsViewingHistory(false);
         setInput('');
         setSearchTerm('');
+        speakWordAndExample(newWord.word, newWord.example_sentence);
+        showToast(`已搜索跳转至新单词: "${newWord.word}"`);
       } catch (error) {
         console.error("Search enrichment failed:", error);
         // Fallback to empty word if AI fails
@@ -747,6 +809,18 @@ export default function App() {
           ebbinghaus_stage: 0,
           listName: 'search records'
         };
+
+        if (currentWord) {
+          pushJumpSource({
+            previousWord: currentWord,
+            previousListName: activeList,
+            rootInfo: null,
+            sourceType: 'search',
+            searchQuery: normalizedTerm,
+          });
+          setHistory(prev => [...prev, currentWord.id]);
+        }
+
         const updatedWords = [...words, newWord];
         setWords(updatedWords);
         saveWords(updatedWords);
@@ -755,11 +829,12 @@ export default function App() {
         setIsViewingHistory(false);
         setInput('');
         setSearchTerm('');
+        showToast(`已搜索跳转至: "${newWord.word}"`);
       } finally {
         setIsSearching(false);
       }
     }
-  }, [searchTerm, words, isSearching, handleSelectWordFromDropdown]);
+  }, [searchTerm, words, isSearching, currentWord, activeList, pushJumpSource, handleSelectWordFromDropdown, showToast]);
 
   // Statistics State
   const [stats, setStats] = useState<Stats>(() => {
@@ -1742,11 +1817,18 @@ export default function App() {
         return;
       }
 
-      // Close synonyms and antonyms popover on Escape
-      if (e.key === 'Escape' && isThesaurusOpen) {
-        e.preventDefault();
-        setIsThesaurusOpen(false);
-        return;
+      // Handle Escape key: close popover or return from search/modal jump
+      if (e.key === 'Escape') {
+        if (isThesaurusOpen) {
+          e.preventDefault();
+          setIsThesaurusOpen(false);
+          return;
+        }
+        if (jumpSource) {
+          e.preventDefault();
+          handleReturnToPreviousWord();
+          return;
+        }
       }
 
       // Handle letter input (only allow letters and spaces/hyphens if they are in the word)
@@ -1774,7 +1856,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip, isGameMode, handleDictationPeekRoot, handleDictationOcclusionReveal, handleSetConfidence, isThesaurusOpen, selectedRootInfo, showToast]);
+  }, [currentWord, input, isTransitioning, showImport, listToRename, listToDelete, isDictationMode, handleBack, handleSkip, isGameMode, handleDictationPeekRoot, handleDictationOcclusionReveal, handleSetConfidence, isThesaurusOpen, selectedRootInfo, jumpSource, handleReturnToPreviousWord, showToast]);
 
   // Check for completion
   useEffect(() => {
@@ -2570,6 +2652,24 @@ export default function App() {
               </div>
             )}
 
+            {/* Return Button if jumped via search or modal */}
+            {jumpSource && (
+              <button
+                type="button"
+                onClick={handleReturnToPreviousWord}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all shadow-sm active:scale-95 cursor-pointer shrink-0 animate-in fade-in ${
+                  jumpSource.sourceType === 'search'
+                    ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-white border border-amber-500/40 shadow-amber-950/30'
+                    : 'bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 hover:text-white border border-indigo-500/40 shadow-indigo-950/30'
+                }`}
+                title={`返回此前学习单词: "${jumpSource.previousWord.word}" (快捷键: Esc)`}
+              >
+                <ArrowLeft size={13} className="shrink-0" />
+                <span className="font-mono font-bold max-w-[80px] sm:max-w-[110px] truncate">{jumpSource.previousWord.word}</span>
+                <span className="text-[10px] opacity-80 hidden xs:inline">返回</span>
+              </button>
+            )}
+
             {/* Search Bar with Autocomplete Dropdown */}
             <div ref={searchContainerRef} className="relative w-full max-w-[170px] sm:max-w-[210px] hidden md:block">
               <div className="relative group">
@@ -2846,24 +2946,52 @@ export default function App() {
               transition={{ duration: 0.2 }}
               className="w-full text-center"
             >
-              {/* Return Banner when navigated via "学习" in root/list modal */}
+              {/* Return Banner when navigated via search or modal */}
               {jumpSource && (
                 <div className="w-full flex justify-center mb-6 z-30">
-                  <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-2xl bg-indigo-950/85 border border-indigo-500/40 text-xs shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200 flex-wrap justify-center">
-                    <span className="text-zinc-400 flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-                      <span>已跳转学习，原词:</span>
-                      <span className="text-white font-mono font-bold">"{jumpSource.previousWord.word}"</span>
+                  <div className={`inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl border text-xs shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200 flex-wrap justify-center ${
+                    jumpSource.sourceType === 'search'
+                      ? 'bg-amber-950/85 border-amber-500/40 text-amber-200 shadow-amber-950/30'
+                      : 'bg-indigo-950/85 border-indigo-500/40 text-zinc-300 shadow-indigo-950/30'
+                  }`}>
+                    <span className="flex items-center gap-1.5 text-zinc-300">
+                      {jumpSource.sourceType === 'search' ? (
+                        <>
+                          <Search size={13} className="text-amber-400 shrink-0" />
+                          <span className="text-amber-300 font-medium">搜索跳转 · 原学习词:</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse shrink-0" />
+                          <span>已跳转学习，原词:</span>
+                        </>
+                      )}
+                      <span className="text-white font-mono font-bold text-sm">"{jumpSource.previousWord.word}"</span>
+                      {jumpSource.previousWord.meaning && (
+                        <span className="text-zinc-400 text-[11px] max-w-[130px] sm:max-w-[190px] truncate">
+                          ({jumpSource.previousWord.meaning})
+                        </span>
+                      )}
+                      {jumpSourceStack.length > 1 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700 font-mono">
+                          {jumpSourceStack.length} 层跳转
+                        </span>
+                      )}
                     </span>
                     <span className="text-zinc-700">|</span>
                     <button
                       type="button"
                       onClick={handleReturnToPreviousWord}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all shadow-sm active:scale-95 cursor-pointer"
-                      title={`返回原单词 "${jumpSource.previousWord.word}"`}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-white font-medium transition-all shadow-sm active:scale-95 cursor-pointer ${
+                        jumpSource.sourceType === 'search'
+                          ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/30'
+                          : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-900/30'
+                      }`}
+                      title={`返回此前单词 "${jumpSource.previousWord.word}" (快捷键: Esc)`}
                     >
                       <ArrowLeft size={13} />
                       <span>返回原词</span>
+                      <kbd className="hidden sm:inline-block ml-0.5 text-[10px] px-1 py-0.2 rounded bg-black/30 text-white/80 font-mono">Esc</kbd>
                     </button>
                     {jumpSource.rootInfo && (
                       <button
@@ -2880,9 +3008,9 @@ export default function App() {
                     )}
                     <button
                       type="button"
-                      onClick={() => setJumpSource(null)}
+                      onClick={handleDismissJumpSource}
                       className="p-1 text-zinc-500 hover:text-zinc-300 rounded-full transition-colors ml-0.5 cursor-pointer"
-                      title="关闭返回提示"
+                      title="关闭返回提示并留在此处"
                     >
                       <X size={14} />
                     </button>
@@ -3113,10 +3241,11 @@ export default function App() {
                   onOpenChange={setIsThesaurusOpen}
                   onSelectWord={(selectedWord) => {
                     if (currentWord && currentWord.id !== selectedWord.id) {
-                      setJumpSource({
+                      pushJumpSource({
                         previousWord: currentWord,
                         previousListName: activeList,
                         rootInfo: null,
+                        sourceType: 'thesaurus',
                       });
                       setHistory(prev => [...prev, currentWord.id]);
                     }
@@ -3949,10 +4078,11 @@ export default function App() {
           onClose={() => setSelectedRootInfo(null)}
           onSelectWord={(word) => {
             if (currentWord && currentWord.id !== word.id) {
-              setJumpSource({
+              pushJumpSource({
                 previousWord: currentWord,
                 previousListName: activeList,
                 rootInfo: selectedRootInfo ? { ...selectedRootInfo } : null,
+                sourceType: 'root',
               });
               setHistory(prev => [...prev, currentWord.id]);
             }
@@ -3977,10 +4107,11 @@ export default function App() {
           currentListWords={filteredWords}
           onSelectWord={(word) => {
             if (currentWord && currentWord.id !== word.id) {
-              setJumpSource({
+              pushJumpSource({
                 previousWord: currentWord,
                 previousListName: activeList,
                 rootInfo: null,
+                sourceType: 'modal',
               });
               setHistory(prev => [...prev, currentWord.id]);
             }
